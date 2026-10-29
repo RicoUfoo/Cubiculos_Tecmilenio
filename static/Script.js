@@ -9,6 +9,9 @@ const Config = {
   N_CUBICULOS: 5,
   DIAS_ADELANTE: 2,
   CLAVE_STORAGE: "cubiculos.reservas.v1",
+  // T6: formato y zona horaria del reloj
+  LOCALE: "es-MX",
+  ZONA_HORARIA: "America/Monterrey",
 };
 
 /* ===== 2. Modelo: datos ===== */
@@ -50,12 +53,41 @@ const Vista = {
       </button>`).join("");
     this.$("plano").innerHTML = html;
   },
+
+  // T6: reloj y fecha en vivo, formato es-MX
+  _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: Config.ZONA_HORARIA,
+  }),
+  _fmtFecha: new Intl.DateTimeFormat(Config.LOCALE, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: Config.ZONA_HORARIA,
+  }),
+
+  renderReloj() {
+    const ahora = new Date();
+    const hora = this._fmtHora.format(ahora);
+    let fecha = this._fmtFecha.format(ahora);
+    fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+
+    const elHora = this.$("clockTime");
+    const elFecha = this.$("clockDate");
+    if (elHora && elHora.textContent !== hora) elHora.textContent = hora;
+    if (elFecha && elFecha.textContent !== fecha) elFecha.textContent = fecha;
+  },
 };
 
 /* ===== 5. App: punto de entrada que conecta todo ===== */
 const App = {
   iniciar() {
     Vista.renderPlano();
+    Vista.renderReloj();
+    setInterval(() => Vista.renderReloj(), 1000);
   },
 };
 
