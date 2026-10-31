@@ -32,6 +32,15 @@ const Modelo = {
   },
 };
 
+// T4: Identificadores estables y nombres legibles
+  const identificadores = {
+  cubiculo_1: "cub-01",
+  cubiculo_2: "cub-02",
+  cubiculo_3: "cub-03",
+  cubiculo_4: "cub-04",
+  cubiculo_5: "cub-05",
+};
+
 /* ===== 3. Reglas: lógica de negocio (esqueleto) ===== */
 const Reglas = {
   crear(datos) { /* historia 25 */ },
