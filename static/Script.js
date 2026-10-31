@@ -100,4 +100,9 @@ const App = {
   },
 };
 
+// T7. politica de horario de operacion configurable //
+const horariooperacion = {
+  abre: "8:00",
+  cierra: "20:00",
+  }:
 document.addEventListener("DOMContentLoaded", () => App.iniciar());
