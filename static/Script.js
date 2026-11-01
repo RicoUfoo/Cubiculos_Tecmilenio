@@ -96,6 +96,40 @@ const Vista = {
     this.$("plano").innerHTML = html;
   },
 
+  // T9: cuadrícula de franjas por cubículo.
+  renderFranjas() {
+    const franjas = Modelo.franjas();
+    const cubiculos = Modelo.cubiculos();
+    const pad = n => String(n).padStart(2, "0");
+
+    const cabecera = franjas
+      .map(f => `<th scope="col">${pad(f.inicio)}:00</th>`)
+      .join("");
+
+    const filas = cubiculos.map(c => `
+      <tr data-cub="${c.id}">
+        <th scope="row">${c.nombre}</th>
+        ${franjas.map(f => `
+        <td>
+          <button class="slot" type="button"
+                  data-cub="${c.id}" data-franja="${f.id}"
+                  aria-label="${c.nombre}, ${f.etiqueta}"></button>
+        </td>`).join("")}
+      </tr>`).join("");
+
+    this.$("franjas").innerHTML = `
+      <table class="tabla-franjas">
+        <caption class="sr-only">Franjas de una hora por cubículo</caption>
+        <thead><tr><th scope="col">Cubículo</th>${cabecera}</tr></thead>
+        <tbody>${filas}</tbody>
+      </table>`;
+
+    const info = this.$("franjasInfo");
+    if (info && franjas.length) {
+      info.textContent = `${franjas.length} franjas de una hora, de ${franjas[0].etiqueta.slice(0, 5)} a ${franjas[franjas.length - 1].etiqueta.slice(-5)}.`;
+    }
+  },
+
   // T6: reloj y fecha en vivo, formato es-MX
   _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
     hour: "2-digit",
@@ -128,6 +162,7 @@ const Vista = {
 const App = {
   iniciar() {
     Vista.renderPlano();
+    Vista.renderFranjas();   // T9
     Vista.renderReloj();
     setInterval(() => Vista.renderReloj(), 1000);
   },

@@ -53,3 +53,20 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
   .booth:nth-child(5) { grid-column: span 2; }
 }
 @media (prefers-reduced-motion: reduce) { .booth { transition: none; } }
+
+/* T9: cuadrícula de franjas por cubículo */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.franjas-sec { margin-top: 48px; }
+.franjas-info { margin: 4px 0 16px; font-size: 14px; color: #4F645A; }
+.tabla-wrap { overflow-x: auto; border: 1.5px solid #D0DDD5; border-radius: 14px; background: #fff; }
+.tabla-franjas { border-collapse: separate; border-spacing: 4px; width: 100%; min-width: 760px; }
+.tabla-franjas th { font-size: 12px; font-weight: 600; color: #4F645A; text-align: center; padding: 6px 2px; }
+.tabla-franjas thead th:first-child, .tabla-franjas tbody th { text-align: left; padding-left: 10px; white-space: nowrap; position: sticky; left: 0; background: #fff; }
+.tabla-franjas tbody th { font-size: 13px; color: #0E2218; }
+.tabla-franjas td { padding: 0; }
+.slot {
+  appearance: none; display: block; width: 100%; height: 38px; cursor: pointer;
+  background: #F4F8F5; border: 1.5px solid #D0DDD5; border-radius: 8px;
+}
+.slot:hover { border-color: #0A7A45; }
+.slot:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
