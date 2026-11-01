@@ -2,8 +2,9 @@
 
 /* ===== 1. Config: única fuente de verdad ===== */
 const Config = {
-  ABRE: 7,
-  CIERRA: 21,
+  // T7: horario de operación configurable (8:00 a 20:00)
+  ABRE: 8,
+  CIERRA: 20,
   MAX_HORAS: 2,
   MAX_PERSONAS: 3,
   N_CUBICULOS: 5,
@@ -18,27 +19,19 @@ const Config = {
 const Modelo = {
   reservas: [],
 
-  // T3: lista de cubículos. Para agregar uno, basta con añadir un objeto aquí.
+  // T3 + T4: lista de cubículos con identificador estable y nombre legible.
+  // Para agregar uno, basta con añadir un objeto aquí.
   CUBICULOS: [
-    { id: 1, nombre: "Cubículo 1", capacidad: 3 },
-    { id: 2, nombre: "Cubículo 2", capacidad: 3 },
-    { id: 3, nombre: "Cubículo 3", capacidad: 3 },
-    { id: 4, nombre: "Cubículo 4", capacidad: 3 },
-    { id: 5, nombre: "Cubículo 5", capacidad: 3 },
+    { id: "cub-01", numero: 1, nombre: "Cubículo 1", capacidad: 3 },
+    { id: "cub-02", numero: 2, nombre: "Cubículo 2", capacidad: 3 },
+    { id: "cub-03", numero: 3, nombre: "Cubículo 3", capacidad: 3 },
+    { id: "cub-04", numero: 4, nombre: "Cubículo 4", capacidad: 3 },
+    { id: "cub-05", numero: 5, nombre: "Cubículo 5", capacidad: 3 },
   ],
 
   cubiculos() {
     return this.CUBICULOS;
   },
-};
-
-// T4: Identificadores estables y nombres legibles
-  const identificadores = {
-  cubiculo_1: "cub-01",
-  cubiculo_2: "cub-02",
-  cubiculo_3: "cub-03",
-  cubiculo_4: "cub-04",
-  cubiculo_5: "cub-05",
 };
 
 /* ===== 3. Reglas: lógica de negocio (esqueleto) ===== */
@@ -57,7 +50,7 @@ const Vista = {
       <button class="booth" type="button" data-cub="${c.id}"
               aria-label="${c.nombre}, capacidad ${c.capacidad} personas">
         <small>Cubículo</small>
-        <b>${c.id}</b>
+        <b>${c.numero}</b>
         <span>Hasta ${c.capacidad} personas</span>
       </button>`).join("");
     this.$("plano").innerHTML = html;
@@ -100,9 +93,5 @@ const App = {
   },
 };
 
-// T7. politica de horario de operacion configurable //
-const horariooperacion = {
-  abre: "8:00",
-  cierra: "20:00",
-  };
 document.addEventListener("DOMContentLoaded", () => App.iniciar());
+// test
