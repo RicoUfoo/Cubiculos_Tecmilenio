@@ -5,6 +5,8 @@ const Config = {
   // T7: horario de operación configurable (8:00 a 20:00)
   ABRE: 8,
   CIERRA: 20,
+  // T8: duración de cada franja, en horas
+  FRANJA_HORAS: 1,
   MAX_HORAS: 2,
   MAX_PERSONAS: 3,
   N_CUBICULOS: 5,
@@ -31,6 +33,44 @@ const Modelo = {
 
   cubiculos() {
     return this.CUBICULOS;
+  },
+
+  // T8: modelo de franjas de una hora, generado desde Config (ABRE → CIERRA).
+  // Cada franja: { id: "fr-08", inicio: 8, fin: 9, etiqueta: "08:00 – 09:00" }
+  franjas() {
+    const pad = n => String(n).padStart(2, "0");
+    const lista = [];
+    for (let h = Config.ABRE; h + Config.FRANJA_HORAS <= Config.CIERRA; h += Config.FRANJA_HORAS) {
+      const fin = h + Config.FRANJA_HORAS;
+      lista.push({
+        id: `fr-${pad(h)}`,
+        inicio: h,
+        fin,
+        etiqueta: `${pad(h)}:00 – ${pad(fin)}:00`,
+      });
+    }
+    return lista;
+  },
+
+  // T8: buscar una franja por su id estable
+  franjaPorId(id) {
+    return this.franjas().find(f => f.id === id);
+  },
+
+  // T8: franja que contiene una hora entera (ej. 14 → fr-14). undefined si está fuera de horario
+  franjaDeHora(hora) {
+    return this.franjas().find(f => hora >= f.inicio && hora < f.fin);
+  },
+
+  // T8: franja en curso ahora mismo (hora de Monterrey). undefined si está cerrado
+  _fmtHoraNum: new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    hourCycle: "h23",
+    timeZone: Config.ZONA_HORARIA,
+  }),
+
+  franjaActual(fecha = new Date()) {
+    return this.franjaDeHora(Number(this._fmtHoraNum.format(fecha)));
   },
 };
 
@@ -94,4 +134,3 @@ const App = {
 };
 
 document.addEventListener("DOMContentLoaded", () => App.iniciar());
-// test
