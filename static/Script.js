@@ -72,6 +72,43 @@ const Modelo = {
   franjaActual(fecha = new Date()) {
     return this.franjaDeHora(Number(this._fmtHoraNum.format(fecha)));
   },
+
+  // T10: fecha de hoy en formato AAAA-MM-DD (zona horaria de Monterrey)
+  _fmtFechaISO: new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: Config.ZONA_HORARIA,
+  }),
+
+  hoy() {
+    return this._fmtFechaISO.format(new Date());
+  },
+
+  // T10: estado de UNA franja de UN cubículo: "libre" u "ocupada".
+  // Una reserva ocupa las franjas desde "inicio" durante "duracion" horas.
+  // Reserva: { cubiculo: "cub-02", fecha: "2026-11-01", inicio: 10, duracion: 2, nombre: "Ana" }
+  estadoFranja(cubId, franja, fecha = this.hoy()) {
+    const ocupada = this.reservas.some(r =>
+      r.cubiculo === cubId &&
+      r.fecha === fecha &&
+      franja.inicio >= r.inicio &&
+      franja.inicio < r.inicio + r.duracion
+    );
+    return ocupada ? "ocupada" : "libre";
+  },
+
+  // T10: DATOS DE EJEMPLO para ver la distinción visual.
+  // Se borran cuando existan las reservas reales (T25) y la persistencia (T33).
+  cargarEjemplo() {
+    const fecha = this.hoy();
+    this.reservas = [
+      { cubiculo: "cub-01", fecha, inicio: 8,  duracion: 1, nombre: "Ejemplo" },
+      { cubiculo: "cub-02", fecha, inicio: 10, duracion: 2, nombre: "Ejemplo" },
+      { cubiculo: "cub-04", fecha, inicio: 14, duracion: 1, nombre: "Ejemplo" },
+      { cubiculo: "cub-05", fecha, inicio: 16, duracion: 2, nombre: "Ejemplo" },
+    ];
+  },
 };
 
 /* ===== 3. Reglas: lógica de negocio (esqueleto) ===== */
@@ -97,6 +134,8 @@ const Vista = {
   },
 
   // T9: cuadrícula de franjas por cubículo.
+  // Filas = cubículos (Modelo.cubiculos), columnas = franjas (Modelo.franjas, T8).
+  // Cada celda es un botón con data-cub y data-franja.
   renderFranjas() {
     const franjas = Modelo.franjas();
     const cubiculos = Modelo.cubiculos();
@@ -109,12 +148,16 @@ const Vista = {
     const filas = cubiculos.map(c => `
       <tr data-cub="${c.id}">
         <th scope="row">${c.nombre}</th>
-        ${franjas.map(f => `
+        ${franjas.map(f => {
+          // T10: libre u ocupada (color + rayas + texto para lector de pantalla)
+          const estado = Modelo.estadoFranja(c.id, f);
+          return `
         <td>
-          <button class="slot" type="button"
-                  data-cub="${c.id}" data-franja="${f.id}"
-                  aria-label="${c.nombre}, ${f.etiqueta}"></button>
-        </td>`).join("")}
+          <button class="slot slot--${estado}" type="button"
+                  data-cub="${c.id}" data-franja="${f.id}" data-estado="${estado}"
+                  aria-label="${c.nombre}, ${f.etiqueta}, ${estado}"></button>
+        </td>`;
+        }).join("")}
       </tr>`).join("");
 
     this.$("franjas").innerHTML = `
@@ -161,8 +204,9 @@ const Vista = {
 /* ===== 5. App: punto de entrada que conecta todo ===== */
 const App = {
   iniciar() {
+    Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
     Vista.renderPlano();
-    Vista.renderFranjas();   // T9
+    Vista.renderFranjas();   // T9 + T10
     Vista.renderReloj();
     setInterval(() => Vista.renderReloj(), 1000);
   },

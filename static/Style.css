@@ -70,3 +70,14 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 }
 .slot:hover { border-color: #0A7A45; }
 .slot:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
+
+/* T10: distinción visual de franjas libres y ocupadas
+   No depende solo del color: la ocupada lleva rayas y cursor de "no disponible". */
+.slot--libre { background: #E3F4EA; border-color: #7FCBA0; }
+.slot--libre:hover { background: #CFEBDB; border-color: #0A7A45; }
+.slot--ocupada {
+  background: repeating-linear-gradient(45deg, #F6D5D5 0 4px, #EFBFBF 4px 8px);
+  border-color: #D98B8B;
+  cursor: not-allowed;
+}
+.slot--ocupada:hover { border-color: #B84A4A; }
