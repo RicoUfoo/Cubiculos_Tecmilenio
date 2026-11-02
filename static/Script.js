@@ -12,6 +12,8 @@ const Config = {
   N_CUBICULOS: 5,
   DIAS_ADELANTE: 2,
   CLAVE_STORAGE: "cubiculos.reservas.v1",
+  // T12: cada cuántos milisegundos se refresca la disponibilidad
+  REFRESCO_MS: 15000,
   // T6: formato y zona horaria del reloj
   LOCALE: "es-MX",
   ZONA_HORARIA: "America/Monterrey",
@@ -135,6 +137,19 @@ const Modelo = {
     return { estado: "libre", franja, hasta, cuando: "hoy" };
   },
 
+  // T12: "firma" de la disponibilidad: un texto que cambia solo si cambia algo visible
+  // (el día, el estado actual de algún cubículo o alguna franja). Sirve para saber
+  // si hace falta volver a dibujar la pantalla.
+  firmaDisponibilidad(ahora = new Date()) {
+    const partes = [this.hoy()];
+    this.cubiculos().forEach(c => {
+      const e = this.estadoActual(c.id, ahora);
+      partes.push(`${c.id}:${e.estado}:${e.hasta}`);
+      partes.push(this.franjas().map(f => this.estadoFranja(c.id, f)[0]).join(""));
+    });
+    return partes.join("|");
+  },
+
   // T10: DATOS DE EJEMPLO para ver la distinción visual.
   // Se borran cuando existan las reservas reales (T25) y la persistencia (T33).
   cargarEjemplo() {
@@ -195,6 +210,34 @@ const Vista = {
       boton.querySelector(".estado-actual").textContent = texto;
       boton.setAttribute("aria-label", `${c.nombre}, capacidad ${c.capacidad} personas, ${texto}`);
     });
+  },
+
+  // T12: REFRESCO AUTOMÁTICO DE LA DISPONIBILIDAD.
+  // Vuelve a dibujar estados y franjas, pero SOLO si algo cambió (compara la "firma"),
+  // así no se pierde el foco del teclado ni parpadea la pantalla.
+  // Devuelve true si se redibujó. "forzar" obliga a dibujar siempre.
+  // Cuando existan reservas guardadas (T33), aquí se vuelven a leer antes de comparar.
+  _firma: "",
+
+  refrescar(forzar = false, ahora = new Date()) {
+    const firma = Modelo.firmaDisponibilidad(ahora);
+    if (!forzar && firma === this._firma) return false;
+    this._firma = firma;
+
+    // Recordar qué franja tenía el foco para devolvérselo después de redibujar
+    const activo = document.activeElement;
+    const enFranja = activo && activo.classList && activo.classList.contains("slot");
+    const cub = enFranja ? activo.dataset.cub : null;
+    const franja = enFranja ? activo.dataset.franja : null;
+
+    this.renderEstados(ahora);
+    this.renderFranjas();
+
+    if (cub) {
+      const mismo = document.querySelector(`.slot[data-cub="${cub}"][data-franja="${franja}"]`);
+      if (mismo) mismo.focus();
+    }
+    return true;
   },
 
   // T9: cuadrícula de franjas por cubículo.
@@ -270,10 +313,15 @@ const App = {
   iniciar() {
     Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
     Vista.renderPlano();
-    Vista.renderEstados();   // T11
-    Vista.renderFranjas();   // T9 + T10
+    Vista.refrescar(true);   // T9 + T10 + T11: primer dibujo
     Vista.renderReloj();
     setInterval(() => Vista.renderReloj(), 1000);
+
+    // T12: refresco automático de la disponibilidad
+    setInterval(() => Vista.refrescar(), Config.REFRESCO_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) Vista.refrescar();   // al volver a la pestaña, actualizar al instante
+    });
   },
 };
 
