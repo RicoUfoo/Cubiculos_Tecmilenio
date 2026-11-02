@@ -472,7 +472,7 @@ const Vista = {
     const e = Modelo.estadoActual(c.id, ahora);
     const agenda = Modelo.agendaDelDia(c.id);
     const h = Modelo.horaDecimal(ahora);
-
+    
     // T16: números de la ficha
     const total = Config.CIERRA - Config.ABRE;
     const horasOcupadas = agenda
@@ -508,32 +508,22 @@ const Vista = {
       <h3 class="detalle-sub">Agenda de hoy</h3>
       <ol class="agenda">${itemsAgenda}</ol>`;
     this.renderAhora(ahora);
+accionreservar.renderizar();
   },
+};
 
 // T18. Cierre del panel y manejo del foco //
-
 const cierrepanel = {
 
   iniciar() {
     const panel = document.getElementById("detalle");
-    const cerrar = document.getElementById("detalleCerrar");
-    if (!panel || !cerrar) return;
-    cerrar.addEventListener("click", () => {
-      panel.close();
-    });
-    panel.addEventListener("click", (ev) => {
-      if (ev.target === panel) {
-        panel.close();
-      }
-    });
-    panel.addEventListener("toggle", () => {
-      if (panel.open) {
-        cerrar.focus();
-      }
-    });
-  };
 
-/* ===== T19. Acción principal "Reservar" contextual ===== */
+    if (!panel) return;
+    Vista.conectarDetalle();
+  }
+};
+
+// T19. Acción principal "Reservar" contextual //
 const accionreservar = {
 
   iniciar() {
@@ -543,6 +533,8 @@ const accionreservar = {
 
     contenedor.addEventListener("click", () => {
       const cubId = Vista._detalleCub;
+      if (!cubId) return;
+
       const estado = Modelo.estadoActual(cubId);
 
       if (estado.estado === "libre") {
@@ -555,6 +547,10 @@ const accionreservar = {
 
   renderizar() {
     const cubId = Vista._detalleCub;
+    const contenedor = document.getElementById("detalleAccion");
+
+    if (!cubId || !contenedor) return;
+
     const estado = Modelo.estadoActual(cubId);
 
     let texto = "Reservar";
@@ -564,15 +560,11 @@ const accionreservar = {
     } else if (estado.estado === "cerrado") {
       texto = "Consultar disponibilidad";
     }
-
-    document.getElementById("detalleAccion").innerHTML = `
-      <button type="button" id="btnReservar">
-        ${texto}
-      </button>
-      `;
-    },
+    contenedor.innerHTML = `
+      <button type="button" id="btnReservar">${texto}</button>
+    `;
+  }
 };
-}),
 
   // T6: reloj y fecha en vivo, formato es-MX
   
@@ -615,6 +607,8 @@ const App = {
     Vista.conectarDetalle(); // T15: tocar una tarjeta abre su detalle
     Vista.refrescar(true);   // T9 + T10 + T11 + T13: primer dibujo
     Vista.renderReloj();
+    cierrepanel.iniciar();
+    accionreservar.iniciar();
     setInterval(() => Vista.renderReloj(), 1000);
 
     // T12: refresco automático de la disponibilidad
