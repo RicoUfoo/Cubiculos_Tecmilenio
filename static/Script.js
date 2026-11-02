@@ -510,6 +510,69 @@ const Vista = {
     this.renderAhora(ahora);
   },
 
+// T18. Cierre del panel y manejo del foco //
+
+const cierrepanel = {
+
+  iniciar() {
+    const panel = document.getElementById("detalle");
+    const cerrar = document.getElementById("detalleCerrar");
+    if (!panel || !cerrar) return;
+    cerrar.addEventListener("click", () => {
+      panel.close();
+    });
+    panel.addEventListener("click", (ev) => {
+      if (ev.target === panel) {
+        panel.close();
+      }
+    });
+    panel.addEventListener("toggle", () => {
+      if (panel.open) {
+        cerrar.focus();
+      }
+    });
+  };
+
+/* ===== T19. Acción principal "Reservar" contextual ===== */
+const accionreservar = {
+
+  iniciar() {
+    const contenedor = document.getElementById("detalleAccion");
+
+    if (!contenedor) return;
+
+    contenedor.addEventListener("click", () => {
+      const cubId = Vista._detalleCub;
+      const estado = Modelo.estadoActual(cubId);
+
+      if (estado.estado === "libre") {
+        console.log("Reservar cubículo:", cubId);
+      } else {
+        console.log("Consultar disponibilidad:", cubId);
+      }
+    });
+  },
+
+  renderizar() {
+    const cubId = Vista._detalleCub;
+    const estado = Modelo.estadoActual(cubId);
+
+    let texto = "Reservar";
+
+    if (estado.estado === "ocupado") {
+      texto = "Consultar horarios";
+    } else if (estado.estado === "cerrado") {
+      texto = "Consultar disponibilidad";
+    }
+
+    document.getElementById("detalleAccion").innerHTML = `
+      <button type="button" id="btnReservar">
+        ${texto}
+      </button>
+      `;
+    },
+};
+
   // T6: reloj y fecha en vivo, formato es-MX
   _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
     hour: "2-digit",
