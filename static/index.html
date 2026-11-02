@@ -43,6 +43,31 @@
     <div class="booths" id="plano" aria-labelledby="planoTitulo"></div>
     <div class="door"><span>Entrada</span></div>
 
+    <!-- T14: Leyenda y guía de lectura -->
+    <section class="leyenda" aria-labelledby="leyendaTitulo">
+      <h2 class="sr-only" id="leyendaTitulo">Leyenda y guía de lectura</h2>
+      <div class="leyenda-cols">
+        <div>
+          <h3>Leyenda</h3>
+          <ul class="leyenda-lista">
+            <li><span class="ley-muestra ley-muestra--libre" aria-hidden="true"></span> <span><strong>Libre</strong>: se puede apartar</span></li>
+            <li><span class="ley-muestra ley-muestra--ocupada" aria-hidden="true"></span> <span><strong>Ocupada</strong> (rayas): ya está reservada</span></li>
+            <li><span class="ley-muestra ley-muestra--pasado" aria-hidden="true"></span> <span><strong>Ya pasó</strong>: la parte sombreada del día</span></li>
+            <li><span class="ley-muestra ley-muestra--ahora" aria-hidden="true"></span> <span><strong>Ahora</strong>: la línea oscura marca la hora actual</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Cómo leer esta página</h3>
+          <ol class="leyenda-guia">
+            <li>Cada tarjeta dice si el cubículo está libre u ocupado <strong>ahora</strong> y hasta qué hora. Fuera del horario de operación dice <strong>Cerrado</strong>.</li>
+            <li>La barra de la tarjeta es el día completo, de la apertura al cierre.</li>
+            <li><strong>Toca una tarjeta</strong> para ver su detalle y su agenda del día.</li>
+            <li>La tabla de abajo muestra cada franja de una hora de todos los cubículos.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
     <!-- T9: Cuadrícula de franjas por cubículo (se genera desde Script.js) -->
     <section class="franjas-sec" aria-labelledby="franjasTitulo">
       <h2 id="franjasTitulo">Franjas de hoy por cubículo</h2>

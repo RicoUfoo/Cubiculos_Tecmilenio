@@ -150,6 +150,34 @@ const Modelo = {
     return bloques;
   },
 
+  // T17: reserva que cubre una franja de un cubículo (o undefined si está libre)
+  reservaEn(cubId, franja, fecha = this.hoy()) {
+    return this.reservas.find(r =>
+      r.cubiculo === cubId &&
+      r.fecha === fecha &&
+      franja.inicio >= r.inicio &&
+      franja.inicio < r.inicio + r.duracion
+    );
+  },
+
+  // T17: AGENDA CRONOLÓGICA DEL DÍA de un cubículo, de ABRE a CIERRA, sin huecos.
+  // Devuelve bloques en orden: { tipo: "libre" | "ocupado", inicio, fin, reserva }
+  // Franjas libres seguidas se unen en un bloque; cada reserva es su propio bloque.
+  // Ej. [{ tipo: "libre", inicio: 8, fin: 10 }, { tipo: "ocupado", inicio: 10, fin: 12, reserva: {...} }, ...]
+  agendaDelDia(cubId, fecha = this.hoy()) {
+    const agenda = [];
+    this.franjas().forEach(f => {
+      const r = this.reservaEn(cubId, f, fecha) || null;
+      const ultimo = agenda[agenda.length - 1];
+      if (ultimo && ultimo.reserva === r && ultimo.fin === f.inicio) {
+        ultimo.fin = f.fin;
+      } else {
+        agenda.push({ tipo: r ? "ocupado" : "libre", inicio: f.inicio, fin: f.fin, reserva: r });
+      }
+    });
+    return agenda;
+  },
+
   // T13: hora actual con minutos como número decimal (14:30 → 14.5), hora de Monterrey.
   // Sirve para colocar la marca de "ahora" en la línea de tiempo.
   _fmtHoraMin: new Intl.DateTimeFormat("en-GB", {
@@ -200,6 +228,13 @@ const Reglas = {
 /* ===== 4. Vista: todo lo que toca el DOM ===== */
 const Vista = {
   $(id) { return document.getElementById(id); },
+
+  // Escapa texto antes de meterlo en innerHTML (los nombres de las reservas los escribe la gente)
+  esc(texto) {
+    return String(texto).replace(/[&<>"']/g, ch => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+    ));
+  },
 
   // T3: el plano se genera recorriendo los datos del Modelo
   renderPlano() {
@@ -378,6 +413,18 @@ const Vista = {
     document.querySelectorAll(".lt-pasado").forEach(el => {
       el.style.width = `${pct}%`;
     });
+
+    // T17: en la agenda, marcar el bloque en curso y atenuar los que ya pasaron
+    document.querySelectorAll(".agenda-item").forEach(li => {
+      const ini = Number(li.dataset.inicio);
+      const fin = Number(li.dataset.fin);
+      const actual = h >= ini && h < fin;
+      li.classList.toggle("agenda-item--pasado", h >= fin);
+      li.classList.toggle("agenda-item--ahora", actual);
+      li.querySelector(".agenda-ahora").hidden = !actual;
+      if (actual) li.setAttribute("aria-current", "time");
+      else li.removeAttribute("aria-current");
+    });
   },
 
   // T15: DEL PLANO AL DETALLE CON UN TOQUE.
@@ -414,20 +461,52 @@ const Vista = {
     if (!dlg.open) dlg.showModal();
   },
 
-  // T15: contenido del detalle. T16–T19 lo van a extender
-  // (lista de reservas del día, botón "Reservar").
+  // T16 + T17: PANEL DE DETALLE DEL CUBÍCULO.
+  // T16: estado actual, ficha (capacidad, horario, horas libres, próxima reserva) y línea de tiempo.
+  // T17: agenda cronológica del día (bloques libres y ocupados en orden, con el bloque en curso marcado).
+  // T18–T19 lo van a extender (botón "Reservar").
   renderDetalle(ahora = new Date()) {
     const c = Modelo.cubiculos().find(x => x.id === this._detalleCub);
     if (!c) return;
     const pad = n => String(n).padStart(2, "0");
     const e = Modelo.estadoActual(c.id, ahora);
+    const agenda = Modelo.agendaDelDia(c.id);
+    const h = Modelo.horaDecimal(ahora);
+
+    // T16: números de la ficha
+    const total = Config.CIERRA - Config.ABRE;
+    const horasOcupadas = agenda
+      .filter(b => b.tipo === "ocupado")
+      .reduce((suma, b) => suma + (b.fin - b.inicio), 0);
+    const proxima = agenda.find(b => b.tipo === "ocupado" && b.inicio > h);
+
+    // T17: lista de la agenda
+    const itemsAgenda = agenda.map(b => {
+      const rango = `${pad(b.inicio)}:00 – ${pad(b.fin)}:00`;
+      const quien = b.tipo === "ocupado"
+        ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}`
+        : `<strong>Libre</strong>`;
+      return `
+        <li class="agenda-item agenda-item--${b.tipo}" data-inicio="${b.inicio}" data-fin="${b.fin}">
+          <span class="agenda-hora">${rango}</span>
+          <span class="agenda-que">${quien}</span>
+          <span class="agenda-ahora" hidden>Ahora</span>
+        </li>`;
+    }).join("");
 
     this.$("detalleTitulo").textContent = c.nombre;
     this.$("detalleCuerpo").innerHTML = `
-      <p class="detalle-dato">Hasta ${c.capacidad} personas · Horario ${pad(Config.ABRE)}:00 – ${pad(Config.CIERRA)}:00</p>
       <p class="detalle-estado" data-estado="${e.estado}">${this.textoEstado(e)}</p>
+      <dl class="detalle-ficha">
+        <div><dt>Capacidad</dt><dd>${c.capacidad} personas</dd></div>
+        <div><dt>Horario</dt><dd>${pad(Config.ABRE)}:00 – ${pad(Config.CIERRA)}:00</dd></div>
+        <div><dt>Libre hoy</dt><dd>${total - horasOcupadas} de ${total} h</dd></div>
+        <div><dt>Próxima reserva</dt><dd>${proxima ? `${pad(proxima.inicio)}:00` : "Ninguna hoy"}</dd></div>
+      </dl>
       <h3 class="detalle-sub">Ocupación de hoy</h3>
-      ${this.htmlLineaTiempo(c.id, { conHoras: true })}`;
+      ${this.htmlLineaTiempo(c.id, { conHoras: true })}
+      <h3 class="detalle-sub">Agenda de hoy</h3>
+      <ol class="agenda">${itemsAgenda}</ol>`;
     this.renderAhora(ahora);
   },
 
@@ -480,4 +559,4 @@ const App = {
   },
 };
 
-document.addEventListener("DOMContentLoaded", () => App.iniciar()); 
+document.addEventListener("DOMContentLoaded", () => App.iniciar());
