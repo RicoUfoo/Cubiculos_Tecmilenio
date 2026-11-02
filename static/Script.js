@@ -572,9 +572,11 @@ const accionreservar = {
       `;
     },
 };
+}),
 
   // T6: reloj y fecha en vivo, formato es-MX
-  _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
+  
+_fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -586,6 +588,7 @@ const accionreservar = {
     month: "long",
     year: "numeric",
     timeZone: Config.ZONA_HORARIA,
+}
   }),
 
   renderReloj() {
