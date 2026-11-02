@@ -51,7 +51,20 @@
     </section>
   </main>
 
+  <!-- T15: detalle del cubículo. Se abre al tocar una tarjeta del plano (contenido desde Script.js) -->
+  <dialog class="detalle" id="detalle" aria-labelledby="detalleTitulo">
+    <div class="detalle-caja">
+      <div class="detalle-cab">
+        <div>
+          <p class="detalle-eyebrow">Detalle</p>
+          <h2 id="detalleTitulo">Cubículo</h2>
+        </div>
+        <button class="detalle-cerrar" id="detalleCerrar" type="button" aria-label="Cerrar detalle">&times;</button>
+      </div>
+      <div id="detalleCuerpo"></div>
+    </div>
+  </dialog>
+
   <script src="Script.js"></script>
 </body>
 </html>
-//test Fn 67 that was loose, speak to me oh toothless one s

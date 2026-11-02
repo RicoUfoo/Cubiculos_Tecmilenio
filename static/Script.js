@@ -137,6 +137,34 @@ const Modelo = {
     return { estado: "libre", franja, hasta, cuando: "hoy" };
   },
 
+  // T13: bloques ocupados de un cubículo en un día, uniendo franjas seguidas.
+  // Ej. reservas 10–11 y 11–12 → [{ inicio: 10, fin: 12 }]
+  bloquesOcupados(cubId, fecha = this.hoy()) {
+    const bloques = [];
+    this.franjas().forEach(f => {
+      if (this.estadoFranja(cubId, f, fecha) !== "ocupada") return;
+      const ultimo = bloques[bloques.length - 1];
+      if (ultimo && ultimo.fin === f.inicio) ultimo.fin = f.fin;
+      else bloques.push({ inicio: f.inicio, fin: f.fin });
+    });
+    return bloques;
+  },
+
+  // T13: hora actual con minutos como número decimal (14:30 → 14.5), hora de Monterrey.
+  // Sirve para colocar la marca de "ahora" en la línea de tiempo.
+  _fmtHoraMin: new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+    timeZone: Config.ZONA_HORARIA,
+  }),
+
+  horaDecimal(fecha = new Date()) {
+    const partes = this._fmtHoraMin.formatToParts(fecha);
+    const valor = tipo => Number(partes.find(p => p.type === tipo).value);
+    return valor("hour") + valor("minute") / 60;
+  },
+
   // T12: "firma" de la disponibilidad: un texto que cambia solo si cambia algo visible
   // (el día, el estado actual de algún cubículo o alguna franja). Sirve para saber
   // si hace falta volver a dibujar la pantalla.
@@ -176,12 +204,13 @@ const Vista = {
   // T3: el plano se genera recorriendo los datos del Modelo
   renderPlano() {
     const html = Modelo.cubiculos().map(c => `
-      <button class="booth" type="button" data-cub="${c.id}"
+      <button class="booth" type="button" data-cub="${c.id}" aria-haspopup="dialog"
               aria-label="${c.nombre}, capacidad ${c.capacidad} personas">
         <small>Cubículo</small>
         <b>${c.numero}</b>
         <span>Hasta ${c.capacidad} personas</span>
         <strong class="estado-actual"></strong>
+        <span class="lt-slot"></span>
       </button>`).join("");
     this.$("plano").innerHTML = html;
   },
@@ -189,22 +218,23 @@ const Vista = {
   // T11: muestra el estado actual de cada cubículo en su tarjeta del plano.
   // Se puede llamar muchas veces (la T12 lo usará para refrescar).
   // Los colores del estado son de la T5: aquí solo se escribe el texto y data-estado.
+  // T11: texto legible de un estado actual (lo usan el plano y el detalle de la T15)
+  textoEstado(e) {
+    const hora = `${String(e.hasta).padStart(2, "0")}:00`;
+    if (e.estado === "cerrado") {
+      return `Cerrado · abre ${e.cuando === "mañana" ? "mañana " : ""}a las ${hora}`;
+    }
+    if (e.estado === "ocupado") return `Ocupado · hasta las ${hora}`;
+    return `Libre · hasta las ${hora}`;
+  },
+
   renderEstados(ahora = new Date()) {
-    const pad = n => String(n).padStart(2, "0");
     Modelo.cubiculos().forEach(c => {
       const boton = document.querySelector(`.booth[data-cub="${c.id}"]`);
       if (!boton) return;
 
       const e = Modelo.estadoActual(c.id, ahora);
-      const hora = `${pad(e.hasta)}:00`;
-      let texto;
-      if (e.estado === "cerrado") {
-        texto = `Cerrado · abre ${e.cuando === "mañana" ? "mañana " : ""}a las ${hora}`;
-      } else if (e.estado === "ocupado") {
-        texto = `Ocupado · hasta las ${hora}`;
-      } else {
-        texto = `Libre · hasta las ${hora}`;
-      }
+      const texto = this.textoEstado(e);
 
       boton.dataset.estado = e.estado;
       boton.querySelector(".estado-actual").textContent = texto;
@@ -231,7 +261,10 @@ const Vista = {
     const franja = enFranja ? activo.dataset.franja : null;
 
     this.renderEstados(ahora);
+    this.renderLineasTiempo();   // T13
     this.renderFranjas();
+    if (this._detalleCub) this.renderDetalle(ahora);   // T15: el detalle abierto también se actualiza
+    this.renderAhora(ahora);     // T13
 
     if (cub) {
       const mismo = document.querySelector(`.slot[data-cub="${cub}"][data-franja="${franja}"]`);
@@ -280,6 +313,124 @@ const Vista = {
     }
   },
 
+  // T13: LÍNEA DE TIEMPO DIARIA DE OCUPACIÓN.
+  // Una pista de ABRE a CIERRA con los bloques ocupados, la parte del día que ya pasó
+  // y una marca de "ahora". Se usa chica en cada tarjeta del plano y grande en el detalle (T15).
+  // Solo usa <span> porque va dentro de un <button>.
+  htmlLineaTiempo(cubId, { conHoras = false } = {}) {
+    const pad = n => String(n).padStart(2, "0");
+    const total = Config.CIERRA - Config.ABRE;
+    const pct = h => ((h - Config.ABRE) / total) * 100;
+
+    const bloques = Modelo.bloquesOcupados(cubId);
+    const horasOcupadas = bloques.reduce((suma, b) => suma + (b.fin - b.inicio), 0);
+    const rangos = bloques.map(b => `${pad(b.inicio)}:00 – ${pad(b.fin)}:00`);
+
+    const segmentos = bloques.map((b, i) => `
+      <span class="lt-bloque" style="left:${pct(b.inicio)}%; width:${pct(b.fin) - pct(b.inicio)}%"
+            title="Ocupado ${rangos[i]}"></span>`).join("");
+
+    let horas = "";
+    if (conHoras) {
+      const marcas = [];
+      for (let h = Config.ABRE; h <= Config.CIERRA; h += 2) {
+        marcas.push(`<span style="left:${pct(h)}%">${pad(h)}:00</span>`);
+      }
+      horas = `<span class="lt-horas" aria-hidden="true">${marcas.join("")}</span>`;
+    }
+
+    const descripcion = bloques.length
+      ? `Ocupado de ${rangos.join(", de ")}`
+      : "Sin reservas hoy";
+
+    return `
+      <span class="linea-tiempo${conHoras ? " linea-tiempo--grande" : ""}">
+        <span class="lt-pista" role="img" aria-label="Línea de tiempo de hoy: ${descripcion}">
+          <span class="lt-pasado"></span>
+          ${segmentos}
+          <span class="lt-ahora" hidden></span>
+        </span>
+        ${horas}
+        <span class="lt-resumen">${horasOcupadas} de ${total} h ocupadas hoy</span>
+      </span>`;
+  },
+
+  // T13: dibuja la línea de tiempo chica dentro de cada tarjeta del plano
+  renderLineasTiempo() {
+    Modelo.cubiculos().forEach(c => {
+      const hueco = document.querySelector(`.booth[data-cub="${c.id}"] .lt-slot`);
+      if (hueco) hueco.innerHTML = this.htmlLineaTiempo(c.id);
+    });
+  },
+
+  // T13: mueve la marca de "ahora" y sombrea lo que ya pasó del día.
+  // Barato: solo cambia estilos, se llama cada que cambia el minuto del reloj.
+  renderAhora(ahora = new Date()) {
+    const h = Modelo.horaDecimal(ahora);
+    const total = Config.CIERRA - Config.ABRE;
+    const dentro = h >= Config.ABRE && h < Config.CIERRA;
+    const pct = Math.min(Math.max((h - Config.ABRE) / total, 0), 1) * 100;
+
+    document.querySelectorAll(".lt-ahora").forEach(el => {
+      el.hidden = !dentro;
+      el.style.left = `${pct}%`;
+    });
+    document.querySelectorAll(".lt-pasado").forEach(el => {
+      el.style.width = `${pct}%`;
+    });
+  },
+
+  // T15: DEL PLANO AL DETALLE CON UN TOQUE.
+  // Tocar (o Enter / Espacio) una tarjeta del plano abre el detalle de ese cubículo.
+  // Usa <dialog> nativo: Esc lo cierra, el foco queda atrapado dentro y al cerrar
+  // regresa a la tarjeta que lo abrió.
+  _detalleCub: null,
+
+  conectarDetalle() {
+    const dlg = this.$("detalle");
+    if (!dlg) return;
+
+    this.$("plano").addEventListener("click", ev => {
+      const tarjeta = ev.target.closest(".booth");
+      if (tarjeta) this.abrirDetalle(tarjeta.dataset.cub);
+    });
+
+    this.$("detalleCerrar").addEventListener("click", () => dlg.close());
+    // Tocar fuera de la caja (en el fondo oscuro) también cierra
+    dlg.addEventListener("click", ev => {
+      if (ev.target === dlg) dlg.close();
+    });
+    dlg.addEventListener("close", () => {
+      const tarjeta = document.querySelector(`.booth[data-cub="${this._detalleCub}"]`);
+      this._detalleCub = null;
+      if (tarjeta) tarjeta.focus();
+    });
+  },
+
+  abrirDetalle(cubId) {
+    const dlg = this.$("detalle");
+    this._detalleCub = cubId;
+    this.renderDetalle();
+    if (!dlg.open) dlg.showModal();
+  },
+
+  // T15: contenido del detalle. T16–T19 lo van a extender
+  // (lista de reservas del día, botón "Reservar").
+  renderDetalle(ahora = new Date()) {
+    const c = Modelo.cubiculos().find(x => x.id === this._detalleCub);
+    if (!c) return;
+    const pad = n => String(n).padStart(2, "0");
+    const e = Modelo.estadoActual(c.id, ahora);
+
+    this.$("detalleTitulo").textContent = c.nombre;
+    this.$("detalleCuerpo").innerHTML = `
+      <p class="detalle-dato">Hasta ${c.capacidad} personas · Horario ${pad(Config.ABRE)}:00 – ${pad(Config.CIERRA)}:00</p>
+      <p class="detalle-estado" data-estado="${e.estado}">${this.textoEstado(e)}</p>
+      <h3 class="detalle-sub">Ocupación de hoy</h3>
+      ${this.htmlLineaTiempo(c.id, { conHoras: true })}`;
+    this.renderAhora(ahora);
+  },
+
   // T6: reloj y fecha en vivo, formato es-MX
   _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, {
     hour: "2-digit",
@@ -303,7 +454,10 @@ const Vista = {
 
     const elHora = this.$("clockTime");
     const elFecha = this.$("clockDate");
-    if (elHora && elHora.textContent !== hora) elHora.textContent = hora;
+    if (elHora && elHora.textContent !== hora) {
+      elHora.textContent = hora;
+      this.renderAhora(ahora);   // T13: cada minuto nuevo, mover la marca de "ahora"
+    }
     if (elFecha && elFecha.textContent !== fecha) elFecha.textContent = fecha;
   },
 };
@@ -313,7 +467,8 @@ const App = {
   iniciar() {
     Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
     Vista.renderPlano();
-    Vista.refrescar(true);   // T9 + T10 + T11: primer dibujo
+    Vista.conectarDetalle(); // T15: tocar una tarjeta abre su detalle
+    Vista.refrescar(true);   // T9 + T10 + T11 + T13: primer dibujo
     Vista.renderReloj();
     setInterval(() => Vista.renderReloj(), 1000);
 
@@ -325,4 +480,4 @@ const App = {
   },
 };
 
-document.addEventListener("DOMContentLoaded", () => App.iniciar());
+document.addEventListener("DOMContentLoaded", () => App.iniciar()); 

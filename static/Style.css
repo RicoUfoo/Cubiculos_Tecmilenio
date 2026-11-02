@@ -85,3 +85,57 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 /* T11: texto del estado actual dentro de la tarjeta del plano
    (los colores del estado los define la T5) */
 .booth .estado-actual { margin-top: 6px; font-size: 12px; font-weight: 600; color: #0E2218; }
+/* T13: línea de tiempo diaria de ocupación (chica en el plano, grande en el detalle) */
+.booth .lt-slot { display: block; margin-top: 10px; }
+.linea-tiempo { display: block; }
+.lt-pista {
+  position: relative; display: block; height: 10px; overflow: hidden;
+  background: #E3F4EA; border: 1px solid #7FCBA0; border-radius: 999px;
+}
+.lt-pasado { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(14, 34, 24, .10); }
+.lt-bloque {
+  position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(45deg, #E9A9A9 0 3px, #D98B8B 3px 6px);
+}
+.lt-ahora { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #0E2218; }
+.linea-tiempo .lt-resumen { display: block; margin-top: 6px; font-size: 12px; color: #4F645A; }
+.linea-tiempo--grande .lt-pista { height: 24px; border-radius: 8px; }
+.lt-horas { position: relative; display: block; height: 16px; margin-top: 4px; font-size: 11px; color: #4F645A; }
+.lt-horas span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.lt-horas span:first-child { transform: none; }
+.lt-horas span:last-child { transform: translateX(-100%); }
+
+/* T15: detalle del cubículo */
+body:has(.detalle[open]) { overflow: hidden; }
+.detalle {
+  width: min(560px, calc(100% - 32px)); max-width: none; padding: 0;
+  border: none; border-radius: 16px; color: #0E2218; background: #fff;
+  box-shadow: 0 20px 60px rgba(7, 48, 31, .35);
+}
+.detalle::backdrop { background: rgba(7, 48, 31, .55); }
+.detalle[open] { animation: detalle-entra .18s ease-out; }
+@keyframes detalle-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.detalle-caja { padding: 24px; }
+.detalle-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.detalle-eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #4F645A; }
+.detalle h2 { margin: 0; font-size: 28px; line-height: 1.1; }
+.detalle-cerrar {
+  appearance: none; flex: none; width: 40px; height: 40px; cursor: pointer;
+  font-size: 24px; line-height: 1; color: #0E2218;
+  background: #F4F8F5; border: 1.5px solid #D0DDD5; border-radius: 10px;
+}
+.detalle-cerrar:hover { border-color: #0A7A45; }
+.detalle-cerrar:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
+.detalle-dato { margin: 12px 0 0; font-size: 14px; color: #4F645A; }
+.detalle-estado {
+  display: inline-block; margin: 14px 0 0; padding: 6px 12px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; background: #F4F8F5; border: 1.5px solid #D0DDD5;
+}
+.detalle-estado[data-estado="libre"] { background: #E3F4EA; border-color: #7FCBA0; }
+.detalle-estado[data-estado="ocupado"] { background: #F6D5D5; border-color: #D98B8B; }
+.detalle-sub { margin: 22px 0 10px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: #4F645A; }
+/* En celular el detalle sale desde abajo, como hoja */
+@media (max-width: 440px) {
+  .detalle { width: 100%; margin: auto 0 0; border-radius: 16px 16px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .detalle[open] { animation: none; } }
