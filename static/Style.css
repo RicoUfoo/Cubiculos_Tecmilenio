@@ -81,3 +81,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
   cursor: not-allowed;
 }
 .slot--ocupada:hover { border-color: #B84A4A; }
+
+/* T11: texto del estado actual dentro de la tarjeta del plano
+   (los colores del estado los define la T5) */
+.booth .estado-actual { margin-top: 6px; font-size: 12px; font-weight: 600; color: #0E2218; }

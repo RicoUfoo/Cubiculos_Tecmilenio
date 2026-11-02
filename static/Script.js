@@ -98,6 +98,43 @@ const Modelo = {
     return ocupada ? "ocupada" : "libre";
   },
 
+  // T11: MOTOR DE ESTADO ACTUAL DEL CUBÍCULO.
+  // Devuelve { estado, franja, hasta, cuando } para un cubículo en un instante dado:
+  //   "cerrado" -> fuera del horario de operación. "hasta" = hora en que abre,
+  //                "cuando" = "hoy" o "mañana".
+  //   "ocupado" -> la franja en curso tiene reserva. "hasta" = hora en que se libera
+  //                (une reservas seguidas).
+  //   "libre"   -> sin reserva ahora. "hasta" = hora de la siguiente reserva
+  //                (o la hora de cierre si ya no hay más hoy).
+  // El parámetro "ahora" permite probarlo con cualquier hora.
+  estadoActual(cubId, ahora = new Date()) {
+    const hora = Number(this._fmtHoraNum.format(ahora));
+    const fecha = this._fmtFechaISO.format(ahora);
+
+    if (hora < Config.ABRE) {
+      return { estado: "cerrado", franja: null, hasta: Config.ABRE, cuando: "hoy" };
+    }
+    if (hora >= Config.CIERRA) {
+      return { estado: "cerrado", franja: null, hasta: Config.ABRE, cuando: "mañana" };
+    }
+
+    const franjas = this.franjas();
+    const i = franjas.findIndex(f => hora >= f.inicio && hora < f.fin);
+    const franja = franjas[i];
+    const ocupada = f => this.estadoFranja(cubId, f, fecha) === "ocupada";
+
+    if (ocupada(franja)) {
+      let j = i;
+      while (j + 1 < franjas.length && ocupada(franjas[j + 1])) j++;
+      return { estado: "ocupado", franja, hasta: franjas[j].fin, cuando: "hoy" };
+    }
+
+    let k = i + 1;
+    while (k < franjas.length && !ocupada(franjas[k])) k++;
+    const hasta = k < franjas.length ? franjas[k].inicio : Config.CIERRA;
+    return { estado: "libre", franja, hasta, cuando: "hoy" };
+  },
+
   // T10: DATOS DE EJEMPLO para ver la distinción visual.
   // Se borran cuando existan las reservas reales (T25) y la persistencia (T33).
   cargarEjemplo() {
@@ -129,13 +166,40 @@ const Vista = {
         <small>Cubículo</small>
         <b>${c.numero}</b>
         <span>Hasta ${c.capacidad} personas</span>
+        <strong class="estado-actual"></strong>
       </button>`).join("");
     this.$("plano").innerHTML = html;
   },
 
+  // T11: muestra el estado actual de cada cubículo en su tarjeta del plano.
+  // Se puede llamar muchas veces (la T12 lo usará para refrescar).
+  // Los colores del estado son de la T5: aquí solo se escribe el texto y data-estado.
+  renderEstados(ahora = new Date()) {
+    const pad = n => String(n).padStart(2, "0");
+    Modelo.cubiculos().forEach(c => {
+      const boton = document.querySelector(`.booth[data-cub="${c.id}"]`);
+      if (!boton) return;
+
+      const e = Modelo.estadoActual(c.id, ahora);
+      const hora = `${pad(e.hasta)}:00`;
+      let texto;
+      if (e.estado === "cerrado") {
+        texto = `Cerrado · abre ${e.cuando === "mañana" ? "mañana " : ""}a las ${hora}`;
+      } else if (e.estado === "ocupado") {
+        texto = `Ocupado · hasta las ${hora}`;
+      } else {
+        texto = `Libre · hasta las ${hora}`;
+      }
+
+      boton.dataset.estado = e.estado;
+      boton.querySelector(".estado-actual").textContent = texto;
+      boton.setAttribute("aria-label", `${c.nombre}, capacidad ${c.capacidad} personas, ${texto}`);
+    });
+  },
+
   // T9: cuadrícula de franjas por cubículo.
   // Filas = cubículos (Modelo.cubiculos), columnas = franjas (Modelo.franjas, T8).
-  // Cada celda es un botón con data-cub y data-franja.
+  // Cada celda es un botón con data-cub y data-franja; T10 les pondrá el color de libre/ocupada.
   renderFranjas() {
     const franjas = Modelo.franjas();
     const cubiculos = Modelo.cubiculos();
@@ -206,6 +270,7 @@ const App = {
   iniciar() {
     Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
     Vista.renderPlano();
+    Vista.renderEstados();   // T11
     Vista.renderFranjas();   // T9 + T10
     Vista.renderReloj();
     setInterval(() => Vista.renderReloj(), 1000);
