@@ -259,8 +259,107 @@ const Reglas = {
     return duraciones;
   },
 
+  // T27: CUMPLIMIENTO DEL HORARIO DE OPERACIÓN.
+  // ¿El lugar está abierto en este instante? (ABRE ≤ hora < CIERRA, hora de Monterrey)
+  estaAbierto(ahora = new Date()) {
+    const h = Modelo.horaDecimal(ahora);
+    return h >= Config.ABRE && h < Config.CIERRA;
+  },
+
+  // T27: revisa que una reserva [inicio, inicio + duracion) quepa en el horario de operación.
+  // Devuelve null si está bien, o { campo, mensaje } con el primer problema encontrado.
+  revisarHorario(inicio, duracion, ahora = new Date()) {
+    const pad = n => String(n).padStart(2, "0");
+    const abre = `${pad(Config.ABRE)}:00`;
+    const cierra = `${pad(Config.CIERRA)}:00`;
+    const h = Modelo.horaDecimal(ahora);
+
+    if (h >= Config.CIERRA) {
+      return { campo: "inicio", mensaje: `Ya cerró por hoy (horario ${abre} – ${cierra}). Vuelve mañana a partir de las ${abre}.` };
+    }
+    if (!Number.isInteger(inicio)) {
+      return { campo: "inicio", mensaje: "Elige una hora de inicio válida." };
+    }
+    if (inicio < Config.ABRE || inicio >= Config.CIERRA) {
+      return { campo: "inicio", mensaje: `Solo se puede reservar dentro del horario de operación (${abre} – ${cierra}).` };
+    }
+    if ((inicio - Config.ABRE) % Config.FRANJA_HORAS !== 0) {
+      return { campo: "inicio", mensaje: "La hora de inicio debe coincidir con el inicio de una franja." };
+    }
+    if (inicio + Config.FRANJA_HORAS <= h) {
+      return { campo: "inicio", mensaje: "Esa hora ya pasó. Elige una hora a partir de ahora." };
+    }
+    if (duracion == null) return null;   // todavía no se eligió duración
+
+    if (!Number.isInteger(duracion) || duracion < Config.FRANJA_HORAS || duracion % Config.FRANJA_HORAS !== 0) {
+      return { campo: "duracion", mensaje: "Elige una duración válida." };
+    }
+    if (duracion > Config.MAX_HORAS) {
+      return { campo: "duracion", mensaje: `Cada reserva puede durar como máximo ${Config.MAX_HORAS} horas.` };
+    }
+    if (inicio + duracion > Config.CIERRA) {
+      return { campo: "duracion", mensaje: `La reserva terminaría a las ${pad(inicio + duracion)}:00, después del cierre (${cierra}).` };
+    }
+    return null;
+  },
+
+  // T28: DETECCIÓN DE CONFLICTOS DE AGENDA.
+  // Dos rangos de horas se traslapan si cada uno empieza antes de que el otro termine.
+  // (10–12 y 12–13 NO chocan: uno termina justo cuando empieza el otro)
+  seTraslapan(ini1, fin1, ini2, fin2) {
+    return ini1 < fin2 && ini2 < fin1;
+  },
+
+  // T28: busca las reservas que chocan con una reserva propuesta.
+  // Devuelve { cubiculo: [...], grupo: [...] }:
+  //   cubiculo -> reservas del MISMO cubículo en un horario que se traslapa.
+  //   grupo    -> reservas del MISMO grupo (mismo nombre) en OTRO cubículo a la misma hora
+  //               (un grupo no puede estar en dos cubículos a la vez).
+  // "ignorarId" sirve para revisar una reserva ya guardada sin que choque consigo misma.
+  conflictos({ cubiculo, fecha, inicio, duracion, nombre = "" }, ignorarId = null) {
+    const fin = inicio + duracion;
+    const grupo = String(nombre).trim().toLocaleLowerCase(Config.LOCALE);
+    const mismoDiaYHora = r =>
+      r.id !== ignorarId &&
+      r.fecha === fecha &&
+      this.seTraslapan(inicio, fin, r.inicio, r.inicio + r.duracion);
+
+    return {
+      cubiculo: Modelo.reservas.filter(r => mismoDiaYHora(r) && r.cubiculo === cubiculo),
+      grupo: grupo
+        ? Modelo.reservas.filter(r =>
+            mismoDiaYHora(r) &&
+            r.cubiculo !== cubiculo &&
+            String(r.nombre ?? "").trim().toLocaleLowerCase(Config.LOCALE) === grupo)
+        : [],
+    };
+  },
+
+  // T28: texto legible de una reserva que choca (ej. "Cubículo 2 de 10:00 a 12:00")
+  describirReserva(r) {
+    const pad = n => String(n).padStart(2, "0");
+    const cub = Modelo.cubiculos().find(c => c.id === r.cubiculo);
+    return `${cub ? cub.nombre : r.cubiculo} de ${pad(r.inicio)}:00 a ${pad(r.inicio + r.duracion)}:00`;
+  },
+
+  // T28: revisa TODAS las reservas guardadas y devuelve los pares que chocan entre sí.
+  // Útil cuando las reservas vengan de otro lado (localStorage, T33) y puedan venir mal.
+  conflictosExistentes() {
+    const pares = [];
+    Modelo.reservas.forEach((a, i) => {
+      Modelo.reservas.slice(i + 1).forEach(b => {
+        if (a.cubiculo === b.cubiculo && a.fecha === b.fecha &&
+            this.seTraslapan(a.inicio, a.inicio + a.duracion, b.inicio, b.inicio + b.duracion)) {
+          pares.push([a, b]);
+        }
+      });
+    });
+    return pares;
+  },
+
   // T26: validación de campos obligatorios. Devuelve { campo: "mensaje" } (vacío = todo bien).
   // Campos: nombre, personas (T22), inicio y duracion (T23).
+  // T27 (horario de operación) y T28 (conflictos de agenda) se revisan aquí también.
   validar(datos, ahora = new Date()) {
     const errores = {};
     const cub = Modelo.cubiculos().find(c => c.id === datos.cubiculo);
@@ -277,14 +376,39 @@ const Reglas = {
     else if (personas > max) errores.personas = `Este cubículo admite hasta ${max} personas.`;
 
     const inicio = Number(datos.inicio);
-    if (datos.inicio === "" || datos.inicio == null) {
-      errores.inicio = "Elige la hora de inicio.";
-    } else if (!this.iniciosDisponibles(cub.id, ahora).includes(inicio)) {
-      errores.inicio = "Esa hora ya no está disponible. Elige otra.";
-    } else if (datos.duracion === "" || datos.duracion == null) {
+    const sinInicio = datos.inicio === "" || datos.inicio == null;
+    const sinDuracion = datos.duracion === "" || datos.duracion == null;
+    const duracion = sinDuracion ? null : Number(datos.duracion);
+
+    // T27: horario de operación
+    const fueraDeHorario = this.revisarHorario(sinInicio ? NaN : inicio, duracion, ahora);
+    if (sinInicio) {
+      errores.inicio = this.estaAbierto(ahora) || Modelo.horaDecimal(ahora) < Config.ABRE
+        ? "Elige la hora de inicio."
+        : fueraDeHorario.mensaje;
+      return errores;
+    }
+    if (fueraDeHorario) {
+      errores[fueraDeHorario.campo] = fueraDeHorario.mensaje;
+      return errores;
+    }
+    if (sinDuracion) {
       errores.duracion = "Elige la duración.";
-    } else if (!this.duracionesPosibles(cub.id, inicio, ahora).includes(Number(datos.duracion))) {
-      errores.duracion = "Esa duración no cabe en el horario libre. Elige otra.";
+      return errores;
+    }
+
+    // T28: conflictos de agenda
+    const fecha = Modelo._fmtFechaISO.format(ahora);
+    const choques = this.conflictos({ cubiculo: cub.id, fecha, inicio, duracion, nombre });
+    if (choques.cubiculo.length) {
+      const lista = choques.cubiculo.map(r => this.describirReserva(r)).join(" y ");
+      // Si choca justo en la hora de inicio, el problema es la hora; si choca después, la duración
+      const chocaAlInicio = choques.cubiculo.some(r => inicio >= r.inicio && inicio < r.inicio + r.duracion);
+      errores[chocaAlInicio ? "inicio" : "duracion"] =
+        `Choca con otra reserva: ${lista}. Elige otro horario.`;
+    } else if (choques.grupo.length) {
+      const lista = choques.grupo.map(r => this.describirReserva(r)).join(" y ");
+      errores.inicio = `"${nombre}" ya tiene reservado el ${lista}. Un grupo no puede estar en dos cubículos a la vez.`;
     }
     return errores;
   },
@@ -661,15 +785,20 @@ const accionreservar = {
     const hayHoras = Reglas.iniciosDisponibles(cubId).length > 0;
     const estado = Modelo.estadoActual(cubId).estado;
 
+    // T27: después del cierre ya no se puede reservar para hoy
+    const yaCerro = Modelo.horaDecimal() >= Config.CIERRA;
+
     let texto = "Reservar";
-    if (!hayHoras) texto = "Sin horarios disponibles hoy";
+    if (yaCerro) texto = `Cerrado · abre mañana a las ${String(Config.ABRE).padStart(2, "0")}:00`;
+    else if (!hayHoras) texto = "Sin horarios disponibles hoy";
     else if (estado === "ocupado") texto = "Reservar otro horario";
 
     // Solo se vuelve a dibujar si cambió algo (así no se pierde el foco del botón)
-    const firma = `${texto}|${hayHoras}`;
+    const habilitado = hayHoras && !yaCerro;
+    const firma = `${texto}|${habilitado}`;
     if (contenedor.dataset.firma === firma) return;
     contenedor.dataset.firma = firma;
-    contenedor.innerHTML = `<button type="button" class="btn" id="btnReservar"${hayHoras ? "" : " disabled"}>${texto}</button>`;
+    contenedor.innerHTML = `<button type="button" class="btn" id="btnReservar"${habilitado ? "" : " disabled"}>${texto}</button>`;
   }
 };
 
@@ -786,7 +915,7 @@ const FormReserva = {
     this.$("detalleReserva").innerHTML = `
       <form id="formReserva" novalidate>
         <h3 class="reserva-titulo" id="reservaTitulo" tabindex="-1">Reservar ${esc(c.nombre)}</h3>
-        <p class="detalle-dato">Hoy · hasta ${Config.MAX_HORAS} horas por reserva · máximo ${max} personas.</p>
+        <p class="detalle-dato">Hoy · horario ${this.pad(Config.ABRE)}:00 – ${this.pad(Config.CIERRA)}:00 · hasta ${Config.MAX_HORAS} horas por reserva · máximo ${max} personas.</p>
 
         <div class="campo">
           <label for="rNombre">Nombre del grupo o responsable</label>
@@ -913,6 +1042,11 @@ const FormReserva = {
 const App = {
   iniciar() {
     Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
+
+    // T28: avisar en la consola si las reservas cargadas ya traen choques entre sí
+    Reglas.conflictosExistentes().forEach(([a, b]) => {
+      console.warn(`Conflicto de agenda: ${Reglas.describirReserva(a)} choca con ${Reglas.describirReserva(b)}.`);
+    });
     Vista.renderPlano();
     Vista.conectarDetalle(); // T15: tocar una tarjeta abre su detalle
     Vista.refrescar(true);   // T9 + T10 + T11 + T13: primer dibujo
