@@ -14,7 +14,10 @@ const Config = {
   // T33: persistencia local (localStorage) con esquema versionado
   CLAVE_STORAGE: "cubiculos.estado",
   CLAVES_ANTIGUAS: ["cubiculos.reservas.v1"],   // se migran y se borran
-  ESQUEMA_VERSION: 1,                           // súbelo cuando cambie la forma de los datos
+  // T36: clave del identificador anónimo de este navegador (el "dueño" de sus reservas)
+  CLAVE_DISPOSITIVO: "cubiculos.dispositivo",
+  // T36: v2 = cada reserva guarda "dueno" (ver Almacen.MIGRACIONES[1])
+  ESQUEMA_VERSION: 2,                           // súbelo cuando cambie la forma de los datos
   MAX_NOMBRE: 40,
   // T12: cada cuántos milisegundos se refresca la disponibilidad
   REFRESCO_MS: 15000,
@@ -100,6 +103,56 @@ const Mensajes = {
 
   // Reserva exitosa (T31)
   reservaCreada: (cub, ini, fin, codigo) => `Reserva confirmada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}. Código ${codigo}.`,
+
+  // Cancelación de reservas propias (T36)
+  cancelarNoExiste: () => "Esa reserva ya no existe. Es posible que ya se haya cancelado.",
+  cancelarNoEsTuya: () => "Solo puedes cancelar las reservas que hiciste desde este navegador.",
+  cancelarYaTermino: () => "Esa reserva ya terminó y no se puede cancelar.",
+  cancelarFallo: () => "No se pudo guardar la cancelación en este navegador, así que la reserva sigue activa. Intenta de nuevo.",
+  reservaCancelada: (cub, ini, fin) => `Reserva cancelada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}. El horario quedó libre.`,
+  etiquetaTuya: () => "Tu reserva",
+  botonCancelarReserva: () => "Cancelar reserva",
+  cancelarAriaLabel: (nombre, rango) => `Cancelar la reserva de ${nombre}, ${rango}`,
+
+  // Confirmación integrada para acciones destructivas (T37)
+  confirmarEyebrow: () => "Confirmar",
+  confirmarCancelarTitulo: () => "¿Cancelar esta reserva?",
+  confirmarCancelarAviso: () => "El horario quedará libre para que otra persona lo aparte. Esta acción no se puede deshacer.",
+  cancelarNoPosibleTitulo: () => "No se pudo cancelar",
+  botonConfirmarCancelar: () => "Sí, cancelar reserva",
+  botonConservar: () => "No, conservar reserva",
+  botonEntendido: () => "Entendido",
+};
+
+/* ===== 1c. Identidad del dispositivo (T36) =====
+   La página no pide registro ni contraseña, así que "reserva propia" significa
+   "hecha desde este navegador". Al crear una reserva se guarda un identificador
+   anónimo (el token); solo quien tenga ese mismo token en su localStorage puede
+   cancelarla. No es seguridad real (no hay servidor): evita cancelar por error
+   o a propósito la reserva de otra persona desde la interfaz. */
+const Identidad = {
+  _token: null,
+
+  _generar() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+    return `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  },
+
+  token() {
+    if (this._token) return this._token;
+    let t = null;
+    try { t = localStorage.getItem(Config.CLAVE_DISPOSITIVO); } catch (e) { /* sin almacenamiento */ }
+    if (!t || !/^[\w-]{8,64}$/.test(t)) {
+      t = this._generar();
+      try { localStorage.setItem(Config.CLAVE_DISPOSITIVO, t); } catch (e) { /* vive solo en memoria */ }
+    }
+    this._token = t;
+    return t;
+  },
+
+  esMia(reserva) {
+    return !!reserva && !!reserva.dueno && reserva.dueno === this.token();
+  },
 };
 
 /* ===== 2. Modelo: datos ===== */
@@ -478,7 +531,7 @@ const Reglas = {
   // T25: PUNTO ÚNICO DE ALTA. Toda reserva nueva se crea aquí y en ningún otro lado
   // (nadie más debe hacer Modelo.reservas.push). Valida y guarda.
   // Devuelve { ok: true, reserva } o { ok: false, errores }.
-  // Reserva: { id, cubiculo, fecha, inicio, duracion, nombre, personas }
+  // Reserva: { id, cubiculo, fecha, inicio, duracion, nombre, personas, dueno }   (dueno: T36)
   crear(datos, ahora = new Date()) {
     const errores = this.validar(datos, ahora);
     if (Object.keys(errores).length) return { ok: false, errores };
@@ -491,13 +544,56 @@ const Reglas = {
       duracion: Number(datos.duracion),
       nombre: String(datos.nombre).trim(),
       personas: Number(datos.personas),
+      dueno: Identidad.token(),   // T36: quién puede cancelarla
     };
     Modelo.reservas.push(reserva);
     Sincronizacion.avisar({ tipo: "reserva-creada", reserva });   // T32: toda la interfaz se entera
     return { ok: true, reserva };
   },
 
-  cancelar(id) { /* historia 36 */ },
+  // T36: CANCELACIÓN AUTOSERVICIO DE RESERVAS PROPIAS.
+  // ¿La reserva ya terminó? (de un día anterior, o de hoy con hora de fin ya transcurrida)
+  yaTermino(reserva, ahora = new Date()) {
+    const hoy = Modelo._fmtFechaISO.format(ahora);
+    if (reserva.fecha !== hoy) return reserva.fecha < hoy;
+    return reserva.inicio + reserva.duracion <= Modelo.horaDecimal(ahora);
+  },
+
+  // T36: devuelve null si se puede cancelar, o el mensaje (catálogo T30) de por qué no.
+  // Se puede cancelar: existe, es de este navegador y todavía no termina
+  // (una reserva en curso sí: libera lo que le queda).
+  motivoNoCancelar(reserva, ahora = new Date()) {
+    if (!reserva) return Mensajes.cancelarNoExiste();
+    if (!Identidad.esMia(reserva)) return Mensajes.cancelarNoEsTuya();
+    if (this.yaTermino(reserva, ahora)) return Mensajes.cancelarYaTermino();
+    return null;
+  },
+
+  puedeCancelar(reserva, ahora = new Date()) {
+    return this.motivoNoCancelar(reserva, ahora) === null;
+  },
+
+  // T38: PUNTO ÚNICO DE BAJA (el espejo de crear, T25). Nadie más debe quitar reservas
+  // a mano (salvo la depuración de vencidas, T35).
+  // La baja es TRANSACCIONAL: primero se quita del modelo, luego se intenta guardar; si el
+  // guardado falla se deshace todo, para que la pantalla y lo guardado nunca se contradigan.
+  // El id de una reserva dada de baja no se reutiliza (Modelo._ultimoId solo sube y se guarda).
+  // Devuelve { ok: true, reserva } o { ok: false, error }.
+  cancelar(id, ahora = new Date()) {
+    const reserva = Modelo.reservas.find(r => r.id === id);
+    const motivo = this.motivoNoCancelar(reserva, ahora);
+    if (motivo) return { ok: false, error: motivo };
+
+    const respaldo = Modelo.reservas;
+    Modelo.reservas = respaldo.filter(r => r.id !== id);
+    if (!Almacen.guardarSeguro()) {
+      Modelo.reservas = respaldo;   // deshacer: la reserva sigue activa
+      return { ok: false, error: Mensajes.cancelarFallo() };
+    }
+    // yaGuardado: el almacén ya quedó al día, no hace falta guardar otra vez (T33)
+    Sincronizacion.avisar({ tipo: "reserva-cancelada", reserva, yaGuardado: true });   // T32
+    return { ok: true, reserva };
+  },
 };
 
 /* ===== 3b. Sincronización: avisa a toda la interfaz cuando cambian los datos (T32) =====
@@ -536,20 +632,34 @@ const Almacen = {
   },
 
   // T33: ESQUEMA VERSIONADO. Lo que se guarda siempre tiene esta forma:
-  // { version: 1, guardado: "2026-11-12T18:30:00.000Z", ultimoId: 3,
-  //   reservas: [{ id, cubiculo, fecha, inicio, duracion, nombre, personas }, ...] }
+  // { version: 2, guardado: "2026-11-12T18:30:00.000Z", ultimoId: 3,
+  //   reservas: [{ id, cubiculo, fecha, inicio, duracion, nombre, personas, dueno }, ...] }
   serializar() {
     return JSON.stringify({
       version: Config.ESQUEMA_VERSION,
       guardado: new Date().toISOString(),
       ultimoId: Modelo._ultimoId,
-      reservas: Modelo.reservas.map(({ id, cubiculo, fecha, inicio, duracion, nombre, personas }) =>
-        ({ id, cubiculo, fecha, inicio, duracion, nombre, personas })),
+      reservas: Modelo.reservas.map(({ id, cubiculo, fecha, inicio, duracion, nombre, personas, dueno }) =>
+        ({ id, cubiculo, fecha, inicio, duracion, nombre, personas, dueno })),   // T36: dueno
     });
   },
 
   guardar() {
     if (!this.disponible() || this._soloLectura) return false;
+    try {
+      localStorage.setItem(Config.CLAVE_STORAGE, this.serializar());
+      return true;
+    } catch (e) {
+      console.warn(Mensajes.errorAlGuardar(), e);
+      return false;
+    }
+  },
+
+  // T38: guardado para operaciones que deben ser transaccionales (como cancelar).
+  // Devuelve false SOLO si había que guardar y falló la escritura. Si no hay almacenamiento
+  // o los datos son de solo lectura, no hay nada que pueda fallar: la página trabaja en memoria.
+  guardarSeguro() {
+    if (!this.disponible() || this._soloLectura) return true;
     try {
       localStorage.setItem(Config.CLAVE_STORAGE, this.serializar());
       return true;
@@ -567,6 +677,15 @@ const Almacen = {
       version: 1,
       ultimoId: 0,
       reservas: (Array.isArray(datos) ? datos : []).map(r => ({ personas: 1, ...r })),
+    }),
+    // T36: v1 -> v2. Antes de la T36 las reservas solo existían en el localStorage de este
+    // navegador, así que todas son de este dispositivo: se les asigna su token para que
+    // el dueño pueda cancelarlas.
+    1: datos => ({
+      version: 2,
+      ultimoId: datos.ultimoId,
+      reservas: (Array.isArray(datos.reservas) ? datos.reservas : [])
+        .map(r => ({ dueno: Identidad.token(), ...r })),
     }),
   },
 
@@ -703,7 +822,10 @@ const Almacen = {
       let id = /^res-\d+$/.test(bruta.id) && !idsVistos.has(bruta.id) ? bruta.id : null;
       if (id) idsVistos.add(id);
 
-      validas.push({ id, cubiculo: cub.id, fecha, inicio, duracion, nombre, personas });
+      // T36: el dueño se conserva; sin dueño válido queda en null (nadie podrá cancelarla)
+      const dueno = typeof bruta.dueno === "string" && /^[\w-]{8,64}$/.test(bruta.dueno) ? bruta.dueno : null;
+
+      validas.push({ id, cubiculo: cub.id, fecha, inicio, duracion, nombre, personas, dueno });
     });
     return { validas, descartadas };
   },
@@ -781,6 +903,17 @@ const Vista = {
       this._resaltar = null;
       this.refrescar(true);
     }, Config.AVISO_MS);
+  },
+
+  // T38: si una reserva desaparece (se cancela aquí, en otra pestaña o se depura), no puede
+  // quedar nada apuntando a ella: ni el resaltado de la T31 ni el último código mostrado.
+  limpiarHuerfanos() {
+    const existe = id => Modelo.reservas.some(r => r.id === id);
+    if (this._resaltar && !existe(this._resaltar)) {
+      clearTimeout(this._timerResaltar);
+      this._resaltar = null;
+    }
+    if (FormReserva._ultima && !existe(FormReserva._ultima.id)) FormReserva._ultima = null;
   },
 
   // Escapa texto antes de meterlo en innerHTML (los nombres de las reservas los escribe la gente)
@@ -1065,14 +1198,18 @@ const Vista = {
     const itemsAgenda = agenda.map(b => {
       const rango = `${pad(b.inicio)}:00 – ${pad(b.fin)}:00`;
       const quien = b.tipo === "ocupado"
-        ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}`
+        ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}${Identidad.esMia(b.reserva) ? ` <span class="agenda-tuya">${Mensajes.etiquetaTuya()}</span>` : ""}`
         : `<strong>Libre</strong>`;
       const nueva = b.reserva && b.reserva.id && b.reserva.id === this._resaltar;   // T31
+      // T36: solo las reservas propias y vigentes llevan botón de cancelar
+      const cancelable = b.tipo === "ocupado" && Reglas.puedeCancelar(b.reserva, ahora);
       return `
         <li class="agenda-item agenda-item--${b.tipo}${nueva ? " agenda-item--nueva" : ""}" data-inicio="${b.inicio}" data-fin="${b.fin}">
           <span class="agenda-hora">${rango}</span>
           <span class="agenda-que">${quien}</span>
           <span class="agenda-ahora" hidden>Ahora</span>
+          ${cancelable ? `<button type="button" class="btn btn--sec btn--chico agenda-cancelar" data-cancelar="${this.esc(b.reserva.id)}"
+                  aria-label="${this.esc(Mensajes.cancelarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonCancelarReserva()}</button>` : ""}
         </li>`;
     }).join("");
 
@@ -1135,6 +1272,12 @@ const cierrepanel = {
     Vista.conectarDetalle();
     // Al cerrar el panel se descarta el formulario de reserva a medias
     panel.addEventListener("close", () => FormReserva.reiniciar());
+    // T37: con una confirmación abierta, el panel también se limpia al cerrarse (no se borra nada)
+    panel.addEventListener("close", () => Confirmacion.reiniciar());
+    // T37: Esc con una confirmación abierta solo cierra la confirmación, no todo el panel
+    panel.addEventListener("cancel", ev => {
+      if (Confirmacion.activa()) { ev.preventDefault(); Confirmacion.cerrar(); }
+    });
   }
 };
 
@@ -1469,6 +1612,162 @@ const FormReserva = {
   },
 };
 
+// T37. Confirmación integrada para acciones destructivas //
+// Panel dentro del mismo <dialog> (no usa window.confirm): reemplaza el detalle mientras se pide
+// confirmar, con el foco en el título, un botón seguro ("conservar") y uno de peligro.
+// Es genérico: cualquier acción destructiva futura llama a Confirmacion.pedir({...}).
+// Cerrar el panel, tocar fuera, Esc o "conservar" NUNCA ejecutan la acción.
+//   op = { titulo, mensaje, datos: [{ etiqueta, valor, ancho }], textoConfirmar, textoConservar,
+//          alConfirmar: () => ({ ok, error }),  alTerminar: res => void,
+//          vigente: () => (null | "mensaje de por qué ya no aplica") }
+const Confirmacion = {
+  _activa: false,
+  _procesando: false,
+  _op: null,
+
+  $(id) { return document.getElementById(id); },
+  activa() { return this._activa; },
+
+  iniciar() {
+    const cont = this.$("detalleConfirmar");
+    if (!cont) return;
+    cont.addEventListener("click", ev => {
+      const boton = ev.target.closest("[data-confirmar]");
+      if (!boton) return;
+      if (boton.dataset.confirmar === "si") this.confirmar();
+      else this.cerrar();
+    });
+  },
+
+  pedir(op) {
+    const cont = this.$("detalleConfirmar");
+    if (!cont) return;
+    const esc = t => Vista.esc(t);
+    this._op = op;
+    this._activa = true;
+    this._procesando = false;
+
+    this.$("detalleCuerpo").hidden = true;
+    this.$("detalleAccion").hidden = true;
+    this.$("detalleEyebrow").textContent = Mensajes.confirmarEyebrow();
+
+    const datos = (op.datos || []).map(d =>
+      `<div${d.ancho ? ' class="ancho"' : ""}><dt>${esc(d.etiqueta)}</dt><dd>${esc(d.valor)}</dd></div>`).join("");
+
+    cont.hidden = false;
+    cont.innerHTML = `
+      <h3 class="reserva-titulo" id="confirmarTitulo" tabindex="-1">${esc(op.titulo)}</h3>
+      ${op.mensaje ? `<p class="detalle-dato">${esc(op.mensaje)}</p>` : ""}
+      ${datos ? `<dl class="detalle-ficha">${datos}</dl>` : ""}
+      <p class="confirmar-error" id="confirmarError" role="alert"></p>
+      <div class="reserva-botones">
+        <button type="button" class="btn btn--sec" data-confirmar="no">${esc(op.textoConservar || Mensajes.botonEntendido())}</button>
+        <button type="button" class="btn btn--peligro" data-confirmar="si">${esc(op.textoConfirmar || "")}</button>
+      </div>`;
+    this.$("confirmarTitulo").focus();
+  },
+
+  // Si no se puede (o ya no aplica): se muestra el motivo y queda solo "Entendido"
+  mostrarError(texto) {
+    const cont = this.$("detalleConfirmar");
+    if (!this._activa || !cont) return;
+    this.$("confirmarError").textContent = texto;
+    const si = cont.querySelector('[data-confirmar="si"]');
+    const no = cont.querySelector('[data-confirmar="no"]');
+    if (si) si.hidden = true;
+    if (no) { no.textContent = Mensajes.botonEntendido(); no.focus(); }
+  },
+
+  confirmar() {
+    if (!this._activa || this._procesando || !this._op || !this._op.alConfirmar) return;
+    this._procesando = true;   // evita doble clic y que revisar() lo tome por un cambio ajeno
+    const op = this._op;
+    const res = op.alConfirmar();
+    if (res.ok) {
+      this.cerrar();
+      if (op.alTerminar) op.alTerminar(res);
+      return;
+    }
+    this._procesando = false;
+    this.mostrarError(res.error);
+  },
+
+  // T38: si mientras se confirma cambia algo (otra pestaña canceló esa reserva, pasó la hora),
+  // se avisa en el momento en vez de dejar que se confirme algo que ya no existe.
+  revisar() {
+    if (!this._activa || this._procesando || !this._op || !this._op.vigente) return;
+    const motivo = this._op.vigente();
+    if (motivo) this.mostrarError(motivo);
+  },
+
+  // Quita la confirmación y regresa al detalle, con el foco en el título del panel
+  cerrar() {
+    if (!this._activa) return;
+    this.reiniciar();
+    Vista.renderDetalle();
+    const titulo = this.$("detalleTitulo");
+    titulo.setAttribute("tabindex", "-1");
+    titulo.focus();
+  },
+
+  // Deja el panel como estaba (sin tocar el foco ni redibujar: se usa también al cerrar el <dialog>)
+  reiniciar() {
+    if (!this._activa) return;
+    this._activa = false;
+    this._procesando = false;
+    this._op = null;
+    const cont = this.$("detalleConfirmar");
+    cont.hidden = true;
+    cont.innerHTML = "";
+    this.$("detalleCuerpo").hidden = false;
+    this.$("detalleAccion").hidden = false;
+    this.$("detalleEyebrow").textContent = "Detalle";
+  },
+};
+
+// T36. Cancelación autoservicio de reservas propias //
+// El botón "Cancelar reserva" vive en la agenda del detalle (solo en reservas propias y vigentes).
+// Pide confirmación (T37) y la baja la hace Reglas.cancelar (T36 + T38).
+const CancelarReserva = {
+  iniciar() {
+    const cuerpo = document.getElementById("detalleCuerpo");
+    if (!cuerpo) return;
+    cuerpo.addEventListener("click", ev => {
+      const boton = ev.target.closest("[data-cancelar]");
+      if (boton) this.pedir(boton.dataset.cancelar);
+    });
+  },
+
+  pedir(id) {
+    const reserva = Modelo.reservas.find(r => r.id === id);
+    const motivo = Reglas.motivoNoCancelar(reserva);
+    if (motivo) {   // p. ej. alguien la canceló en otra pestaña justo antes del clic
+      Confirmacion.pedir({ titulo: Mensajes.cancelarNoPosibleTitulo() });
+      Confirmacion.mostrarError(motivo);
+      return;
+    }
+
+    const cub = Modelo.cubiculos().find(c => c.id === reserva.cubiculo);
+    const fin = reserva.inicio + reserva.duracion;
+    const pad = FormReserva.pad;
+    Confirmacion.pedir({
+      titulo: Mensajes.confirmarCancelarTitulo(),
+      mensaje: Mensajes.confirmarCancelarAviso(),
+      datos: [
+        { etiqueta: "Cubículo", valor: cub.nombre },
+        { etiqueta: "Código", valor: reserva.id },
+        { etiqueta: "Horario", valor: `Hoy, ${pad(reserva.inicio)}:00 – ${pad(fin)}:00`, ancho: true },
+        { etiqueta: "A nombre de", valor: reserva.nombre },
+      ],
+      textoConfirmar: Mensajes.botonConfirmarCancelar(),
+      textoConservar: Mensajes.botonConservar(),
+      alConfirmar: () => Reglas.cancelar(id),
+      alTerminar: res => Vista.avisar(Mensajes.reservaCancelada(cub.nombre, res.reserva.inicio, fin)),
+      vigente: () => Reglas.motivoNoCancelar(Modelo.reservas.find(r => r.id === id)),
+    });
+  },
+};
+
 /* ===== 5. App: punto de entrada que conecta todo ===== */
 const App = {
   iniciar() {
@@ -1482,8 +1781,14 @@ const App = {
     cierrepanel.iniciar();
     accionreservar.iniciar();
     FormReserva.iniciar();   // T22–T26
+    Confirmacion.iniciar();     // T37
+    CancelarReserva.iniciar();  // T36
     // T33: todo cambio se guarda (excepto los que vienen del mismo almacén, para no hacer eco)
-    Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen") Almacen.guardar(); });
+    // T38: las bajas (Reglas.cancelar) ya guardaron antes de avisar: no se guarda dos veces
+    Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen" && !cambio.yaGuardado) Almacen.guardar(); });
+    // T38: tras CUALQUIER cambio (alta, baja, depuración, otra pestaña) se limpia lo que apuntaba
+    // a reservas que ya no existen y se revisa si hay una confirmación pendiente sobre ellas
+    Sincronizacion.alCambiar(() => { Vista.limpiarHuerfanos(); Confirmacion.revisar(); });
     // T32: cualquier cambio en las reservas redibuja toda la interfaz al instante
     Sincronizacion.alCambiar(() => Vista.refrescar(true));
     // T33 + T32: si otra pestaña guarda reservas, esta pestaña las carga y se redibuja
