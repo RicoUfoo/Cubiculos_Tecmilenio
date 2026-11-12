@@ -11,7 +11,11 @@ const Config = {
   MAX_PERSONAS: 3,
   N_CUBICULOS: 5,
   DIAS_ADELANTE: 2,
-  CLAVE_STORAGE: "cubiculos.reservas.v1",
+  // T33: persistencia local (localStorage) con esquema versionado
+  CLAVE_STORAGE: "cubiculos.estado",
+  CLAVES_ANTIGUAS: ["cubiculos.reservas.v1"],   // se migran y se borran
+  ESQUEMA_VERSION: 1,                           // súbelo cuando cambie la forma de los datos
+  MAX_NOMBRE: 40,
   // T12: cada cuántos milisegundos se refresca la disponibilidad
   REFRESCO_MS: 15000,
   // T6: formato y zona horaria del reloj
@@ -65,6 +69,34 @@ const Mensajes = {
   choqueCubiculo: lista => `Choca con otra reserva: ${lista}. Elige otro horario.`,
   choqueGrupo: (nombre, lista) => `"${nombre}" ya tiene reservado el ${lista}. Un grupo no puede estar en dos cubículos a la vez.`,
   conflictoExistente: (a, b) => `Conflicto de agenda: ${a} choca con ${b}.`,
+
+  // Persistencia (T33)
+  almacenNoDisponible: () => "No se puede usar el almacenamiento del navegador: las reservas solo durarán mientras la página esté abierta.",
+  errorAlGuardar: () => "No se pudieron guardar las reservas en este navegador (¿almacenamiento lleno o bloqueado?).",
+  datosMigrados: (de, a) => `Datos guardados actualizados del esquema v${de} al v${a}.`,
+  migracionFaltante: v => `No hay cómo actualizar los datos del esquema v${v}.`,
+
+  // Hidratación y saneamiento (T34)
+  datosCorruptos: respaldo => `Los datos guardados estaban dañados. Se respaldaron en "${respaldo}" y se empezó sin reservas.`,
+  versionFutura: v => `Los datos guardados son de una versión más nueva de la página (esquema v${v}). Se muestran vacíos y no se sobrescriben.`,
+  reservaDescartada: (r, motivo) => `Reserva descartada al cargar (${motivo}): ${JSON.stringify(r)}`,
+  resumenCarga: (cargadas, descartadas, depuradas) =>
+    `Reservas cargadas: ${cargadas} · descartadas por datos inválidos: ${descartadas} · vencidas eliminadas: ${depuradas}.`,
+  motivo: {
+    noEsObjeto: "no es una reserva",
+    cubiculo: "el cubículo no existe",
+    fecha: "fecha inválida",
+    fechaLejana: `la fecha está a más de ${Config.DIAS_ADELANTE} días`,
+    inicio: "hora de inicio fuera del horario o inválida",
+    duracion: "duración inválida o termina después del cierre",
+    nombre: "nombre vacío o inválido",
+    personas: "número de personas inválido o mayor al aforo",
+    choque: "choca con otra reserva del mismo cubículo",
+    choqueGrupo: "el mismo grupo ya tiene otro cubículo a esa hora",
+  },
+
+  // Depuración de vencidas (T35)
+  reservasDepuradas: n => `Se ${n === 1 ? "eliminó 1 reserva vencida" : `eliminaron ${n} reservas vencidas`} de días anteriores.`,
 
   // Reserva exitosa (T31)
   reservaCreada: (cub, ini, fin, codigo) => `Reserva confirmada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}. Código ${codigo}.`,
@@ -272,17 +304,6 @@ const Modelo = {
     return `res-${String(this._ultimoId).padStart(3, "0")}`;
   },
 
-  // T10: DATOS DE EJEMPLO para ver la distinción visual.
-  // Se borran cuando existan las reservas reales (T25) y la persistencia (T33).
-  cargarEjemplo() {
-    const fecha = this.hoy();
-    this.reservas = [
-      { cubiculo: "cub-01", fecha, inicio: 8,  duracion: 1, nombre: "Ejemplo" },
-      { cubiculo: "cub-02", fecha, inicio: 10, duracion: 2, nombre: "Ejemplo" },
-      { cubiculo: "cub-04", fecha, inicio: 14, duracion: 1, nombre: "Ejemplo" },
-      { cubiculo: "cub-05", fecha, inicio: 16, duracion: 2, nombre: "Ejemplo" },
-    ];
-  },
 };
 
 /* ===== 3. Reglas: lógica de negocio ===== */
@@ -480,7 +501,7 @@ const Reglas = {
 };
 
 /* ===== 3b. Sincronización: avisa a toda la interfaz cuando cambian los datos (T32) =====
-   Quien cambia datos (Reglas.crear, y luego cancelar o la persistencia de la T33) llama
+   Quien cambia datos (Reglas.crear, Almacen al depurar o al recibir otra pestaña) llama
    a Sincronizacion.avisar(). Quien muestra datos se suscribe con Sincronizacion.alCambiar().
    Así ninguna parte de la pantalla se queda con información vieja. */
 const Sincronizacion = {
@@ -490,6 +511,236 @@ const Sincronizacion = {
     this._oyentes.forEach(fn => {
       try { fn(cambio); } catch (e) { console.error("Error al sincronizar la interfaz:", e); }
     });
+  },
+};
+
+/* ===== 3c. Almacen: persistencia, hidratación y depuración (T33, T34, T35) ===== */
+const Almacen = {
+  _disponible: null,
+  _soloLectura: false,   // T34: true si los datos son de una versión más nueva (no se pisan)
+
+  // T33: ¿se puede usar localStorage? (puede estar bloqueado o en modo privado)
+  disponible() {
+    if (this._disponible === null) {
+      try {
+        const k = "__cubiculos_prueba__";
+        localStorage.setItem(k, k);
+        localStorage.removeItem(k);
+        this._disponible = true;
+      } catch (e) {
+        this._disponible = false;
+        console.warn(Mensajes.almacenNoDisponible());
+      }
+    }
+    return this._disponible;
+  },
+
+  // T33: ESQUEMA VERSIONADO. Lo que se guarda siempre tiene esta forma:
+  // { version: 1, guardado: "2026-11-12T18:30:00.000Z", ultimoId: 3,
+  //   reservas: [{ id, cubiculo, fecha, inicio, duracion, nombre, personas }, ...] }
+  serializar() {
+    return JSON.stringify({
+      version: Config.ESQUEMA_VERSION,
+      guardado: new Date().toISOString(),
+      ultimoId: Modelo._ultimoId,
+      reservas: Modelo.reservas.map(({ id, cubiculo, fecha, inicio, duracion, nombre, personas }) =>
+        ({ id, cubiculo, fecha, inicio, duracion, nombre, personas })),
+    });
+  },
+
+  guardar() {
+    if (!this.disponible() || this._soloLectura) return false;
+    try {
+      localStorage.setItem(Config.CLAVE_STORAGE, this.serializar());
+      return true;
+    } catch (e) {
+      console.warn(Mensajes.errorAlGuardar(), e);
+      return false;
+    }
+  },
+
+  // T33: MIGRACIONES. MIGRACIONES[n] convierte datos del esquema n al n + 1.
+  // Cuando cambie la forma de los datos: sube Config.ESQUEMA_VERSION y agrega el paso aquí.
+  MIGRACIONES: {
+    // v0 = formato viejo: un arreglo suelto de reservas, sin "version", sin "id" ni "personas"
+    0: datos => ({
+      version: 1,
+      ultimoId: 0,
+      reservas: (Array.isArray(datos) ? datos : []).map(r => ({ personas: 1, ...r })),
+    }),
+  },
+
+  migrar(datos) {
+    let version = Array.isArray(datos) ? 0 : Number(datos && datos.version);
+    if (!Number.isInteger(version) || version < 0) throw new Error("datos sin versión");
+    const original = version;
+    if (version > Config.ESQUEMA_VERSION) return { futuro: true, version };
+    while (version < Config.ESQUEMA_VERSION) {
+      const paso = this.MIGRACIONES[version];
+      if (!paso) throw new Error(Mensajes.migracionFaltante(version));
+      datos = paso(datos);
+      version = datos.version;
+    }
+    if (original !== version) console.info(Mensajes.datosMigrados(original, version));
+    return { datos, migrado: original !== version };
+  },
+
+  // T33 + T34: lee y migra lo guardado. Nunca lanza error: devuelve qué encontró.
+  // estado: "vacio" | "ok" | "corrupto" | "futuro"
+  leer() {
+    if (!this.disponible()) return { estado: "vacio" };
+    let crudo = localStorage.getItem(Config.CLAVE_STORAGE);
+    let antigua = null;
+    if (crudo === null) {   // ¿hay datos con una clave vieja?
+      antigua = Config.CLAVES_ANTIGUAS.find(k => localStorage.getItem(k) !== null) || null;
+      if (!antigua) return { estado: "vacio" };
+      crudo = localStorage.getItem(antigua);
+    }
+    try {
+      const r = this.migrar(JSON.parse(crudo));
+      if (r.futuro) return { estado: "futuro", version: r.version };
+      return { estado: "ok", datos: r.datos, cambio: r.migrado || !!antigua, antigua };
+    } catch (e) {
+      return { estado: "corrupto", crudo, antigua, error: e };
+    }
+  },
+
+  // T34: HIDRATACIÓN Y SANEAMIENTO DEL ESTADO AL INICIAR.
+  // 1) lee y migra, 2) revisa cada reserva y descarta las inválidas o que chocan,
+  // 3) repara ids, 4) quita las vencidas (T35), 5) si algo cambió, guarda la versión limpia.
+  // Se usa al abrir la página y cuando otra pestaña guarda (evento "storage").
+  hidratar(ahora = new Date()) {
+    const lectura = this.leer();
+    let reservas = [];
+    let ultimoId = 0;
+    let hayQueGuardar = false;
+    this._soloLectura = false;
+
+    if (lectura.estado === "corrupto") {
+      const respaldo = `${Config.CLAVE_STORAGE}.danado.${Date.now()}`;
+      try { localStorage.setItem(respaldo, lectura.crudo); } catch (e) { /* sin espacio: se pierde */ }
+      console.warn(Mensajes.datosCorruptos(respaldo), lectura.error);
+      hayQueGuardar = true;
+    } else if (lectura.estado === "futuro") {
+      this._soloLectura = true;
+      console.warn(Mensajes.versionFutura(lectura.version));
+    } else if (lectura.estado === "ok") {
+      reservas = lectura.datos.reservas;
+      ultimoId = Number(lectura.datos.ultimoId) || 0;
+      hayQueGuardar = lectura.cambio;
+    }
+
+    const { validas, descartadas } = this.sanear(reservas, ahora);
+    descartadas.forEach(d => console.warn(Mensajes.reservaDescartada(d.reserva, d.motivo)));
+
+    // Reparar ids: el contador nunca puede quedar por debajo del id más alto guardado
+    const numero = r => Number(String(r.id).slice(4));
+    ultimoId = Math.max(ultimoId, ...validas.filter(r => r.id).map(numero), 0);
+    Modelo._ultimoId = ultimoId;
+    validas.forEach(r => { if (!r.id) { r.id = Modelo.nuevoIdReserva(); hayQueGuardar = true; } });
+
+    Modelo.reservas = validas;
+    const depuradas = this.depurarVencidas(ahora, { avisar: false });   // T35
+
+    if (hayQueGuardar || descartadas.length || depuradas) this.guardar();
+    if (lectura.antigua && lectura.estado !== "futuro") {
+      try { localStorage.removeItem(lectura.antigua); } catch (e) { /* no importa */ }
+    }
+    if (lectura.estado !== "vacio") {
+      console.info(Mensajes.resumenCarga(Modelo.reservas.length, descartadas.length, depuradas));
+    }
+    return { estado: lectura.estado, cargadas: Modelo.reservas.length, descartadas, depuradas };
+  },
+
+  // T34: SANEAMIENTO. Convierte cada reserva a la forma correcta o la descarta con un motivo.
+  // Usa las mismas reglas que el formulario (horario T27, aforo T22, conflictos T28).
+  // Si dos reservas chocan, se queda la más antigua (la de id menor).
+  sanear(lista, ahora = new Date()) {
+    const validas = [];
+    const descartadas = [];
+    if (!Array.isArray(lista)) return { validas, descartadas };
+
+    const hoy = Modelo._fmtFechaISO.format(ahora);
+    const limite = this.sumarDias(hoy, Config.DIAS_ADELANTE);
+    const M = Mensajes.motivo;
+    const idsVistos = new Set();
+    const orden = r => (r && /^res-\d+$/.test(r.id) ? Number(r.id.slice(4)) : Infinity);
+
+    [...lista].sort((a, b) => orden(a) - orden(b)).forEach(bruta => {
+      const descartar = motivo => descartadas.push({ reserva: bruta, motivo });
+      if (!bruta || typeof bruta !== "object" || Array.isArray(bruta)) return descartar(M.noEsObjeto);
+
+      const cub = Modelo.cubiculos().find(c => c.id === bruta.cubiculo);
+      if (!cub) return descartar(M.cubiculo);
+
+      const fecha = String(bruta.fecha ?? "");
+      if (!this.fechaValida(fecha)) return descartar(M.fecha);
+      if (fecha > limite) return descartar(M.fechaLejana);
+
+      const inicio = Number(bruta.inicio);
+      if (!Number.isInteger(inicio) || inicio < Config.ABRE || inicio >= Config.CIERRA ||
+          (inicio - Config.ABRE) % Config.FRANJA_HORAS !== 0) return descartar(M.inicio);
+
+      const duracion = Number(bruta.duracion);
+      if (!Number.isInteger(duracion) || duracion < Config.FRANJA_HORAS ||
+          duracion % Config.FRANJA_HORAS !== 0 || duracion > Config.MAX_HORAS ||
+          inicio + duracion > Config.CIERRA) return descartar(M.duracion);
+
+      const nombre = typeof bruta.nombre === "string" ? bruta.nombre.trim().slice(0, Config.MAX_NOMBRE) : "";
+      if (nombre.length < Config.MIN_NOMBRE) return descartar(M.nombre);
+
+      const personas = Number(bruta.personas);
+      if (!Number.isInteger(personas) || personas < 1 || personas > Reglas.aforo(cub)) return descartar(M.personas);
+
+      const choca = otra => otra.fecha === fecha &&
+        Reglas.seTraslapan(inicio, inicio + duracion, otra.inicio, otra.inicio + otra.duracion);
+      if (validas.some(o => o.cubiculo === cub.id && choca(o))) return descartar(M.choque);
+      const grupo = nombre.toLocaleLowerCase(Config.LOCALE);
+      if (validas.some(o => o.cubiculo !== cub.id && choca(o) &&
+          o.nombre.toLocaleLowerCase(Config.LOCALE) === grupo)) return descartar(M.choqueGrupo);
+
+      // id: se conserva si es válido y no está repetido; si no, se asigna uno nuevo después
+      let id = /^res-\d+$/.test(bruta.id) && !idsVistos.has(bruta.id) ? bruta.id : null;
+      if (id) idsVistos.add(id);
+
+      validas.push({ id, cubiculo: cub.id, fecha, inicio, duracion, nombre, personas });
+    });
+    return { validas, descartadas };
+  },
+
+  // "2026-11-12" es una fecha real (no "2026-02-30")
+  fechaValida(texto) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(texto)) return false;
+    const [a, m, d] = texto.split("-").map(Number);
+    const f = new Date(Date.UTC(a, m - 1, d));
+    return f.getUTCFullYear() === a && f.getUTCMonth() === m - 1 && f.getUTCDate() === d;
+  },
+
+  sumarDias(texto, dias) {
+    const [a, m, d] = texto.split("-").map(Number);
+    return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
+  },
+
+  // T35: DEPURACIÓN AUTOMÁTICA DE RESERVAS VENCIDAS.
+  // Vencida = de un día anterior a hoy (hora de Monterrey). Las de hoy que ya terminaron
+  // se conservan hasta medianoche para que la agenda del día siga mostrando quién usó cada
+  // cubículo (de todos modos esas horas ya están bloqueadas por la T29).
+  // Corre al iniciar, cada REFRESCO_MS y al volver a la pestaña. Si quita algo, avisa (T32)
+  // y por lo tanto se guarda (T33) y se redibuja.
+  vencida(reserva, hoy) {
+    return reserva.fecha < hoy;   // "AAAA-MM-DD" se compara bien como texto
+  },
+
+  depurarVencidas(ahora = new Date(), { avisar = true } = {}) {
+    const hoy = Modelo._fmtFechaISO.format(ahora);
+    const antes = Modelo.reservas.length;
+    Modelo.reservas = Modelo.reservas.filter(r => !this.vencida(r, hoy));
+    const quitadas = antes - Modelo.reservas.length;
+    if (quitadas) {
+      console.info(Mensajes.reservasDepuradas(quitadas));
+      if (avisar) Sincronizacion.avisar({ tipo: "depuracion", cantidad: quitadas });
+    }
+    return quitadas;
   },
 };
 
@@ -584,7 +835,7 @@ const Vista = {
   // Vuelve a dibujar estados y franjas, pero SOLO si algo cambió (compara la "firma"),
   // así no se pierde el foco del teclado ni parpadea la pantalla.
   // Devuelve true si se redibujó. "forzar" obliga a dibujar siempre.
-  // Cuando existan reservas guardadas (T33), aquí se vuelven a leer antes de comparar.
+  // Las reservas guardadas (T33) llegan por el evento "storage" y por Sincronizacion.
   _firma: "",
 
   refrescar(forzar = false, ahora = new Date()) {
@@ -1221,12 +1472,9 @@ const FormReserva = {
 /* ===== 5. App: punto de entrada que conecta todo ===== */
 const App = {
   iniciar() {
-    Modelo.cargarEjemplo();  // T10: datos de ejemplo (quitar en T25/T33)
-
-    // T28: avisar en la consola si las reservas cargadas ya traen choques entre sí
-    Reglas.conflictosExistentes().forEach(([a, b]) => {
-      console.warn(Mensajes.conflictoExistente(Reglas.describirReserva(a), Reglas.describirReserva(b)));
-    });
+    // T33 + T34 + T35: leer lo guardado, sanearlo y quitar lo vencido ANTES del primer dibujo
+    // (los datos de ejemplo de la T10 ya no se usan: ahora las reservas son reales y se guardan)
+    Almacen.hidratar();
     Vista.renderPlano();
     Vista.conectarDetalle(); // T15: tocar una tarjeta abre su detalle
     Vista.refrescar(true);   // T9 + T10 + T11 + T13: primer dibujo
@@ -1234,14 +1482,26 @@ const App = {
     cierrepanel.iniciar();
     accionreservar.iniciar();
     FormReserva.iniciar();   // T22–T26
+    // T33: todo cambio se guarda (excepto los que vienen del mismo almacén, para no hacer eco)
+    Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen") Almacen.guardar(); });
     // T32: cualquier cambio en las reservas redibuja toda la interfaz al instante
     Sincronizacion.alCambiar(() => Vista.refrescar(true));
+    // T33 + T32: si otra pestaña guarda reservas, esta pestaña las carga y se redibuja
+    window.addEventListener("storage", ev => {
+      if (ev.key !== Config.CLAVE_STORAGE) return;
+      Almacen.hidratar();
+      Sincronizacion.avisar({ tipo: "externo", origen: "almacen" });
+    });
     setInterval(() => Vista.renderReloj(), 1000);
 
-    // T12: refresco automático de la disponibilidad
-    setInterval(() => Vista.refrescar(), Config.REFRESCO_MS);
+    // T12 + T35: refresco automático; antes de comparar, se depuran las reservas vencidas
+    const mantenimiento = () => {
+      Almacen.depurarVencidas();
+      Vista.refrescar();
+    };
+    setInterval(mantenimiento, Config.REFRESCO_MS);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) Vista.refrescar();   // al volver a la pestaña, actualizar al instante
+      if (!document.hidden) mantenimiento();   // al volver a la pestaña, actualizar al instante
     });
   },
 };
