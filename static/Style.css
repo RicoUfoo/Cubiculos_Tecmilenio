@@ -214,3 +214,38 @@ body:has(.detalle[open]) { overflow: hidden; }
 .detalle-ficha .ancho { grid-column: span 2; }
 .reserva-botones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 @media (max-width: 440px) { .campos-fila { grid-template-columns: 1fr; } }
+/* T29: franjas ya transcurridas: bloqueadas.
+   No depende solo del color: van atenuadas, con una raya cruzada y cursor de "no disponible". */
+.slot--pasada,
+.slot--pasada:hover {
+  opacity: .4; cursor: not-allowed; border-color: #D0DDD5;
+  background-image: linear-gradient(to top right, transparent calc(50% - 1px), #4F645A 50%, transparent calc(50% + 1px));
+}
+.slot--libre.slot--pasada { background-color: #E3F4EA; }
+.ley-muestra--bloqueada {
+  opacity: .5; background: #E3F4EA linear-gradient(to top right, transparent calc(50% - 1px), #4F645A 50%, transparent calc(50% + 1px));
+}
+
+/* T31: retroalimentación de reserva exitosa */
+.exito { text-align: center; }
+.exito-icono {
+  display: inline-grid; place-items: center; width: 56px; height: 56px; margin-top: 8px;
+  font-size: 30px; font-weight: 700; color: #EAF6EF; background: #0A7A45; border-radius: 50%;
+}
+.exito-codigo { font-family: ui-monospace, Menlo, monospace; letter-spacing: .05em; }
+/* Reserva recién creada: borde grueso + pulso (sin animación si el usuario la desactiva) */
+.slot--nueva { outline: 3px solid #0A7A45; outline-offset: 1px; animation: nueva-pulso 1s ease-in-out 3; }
+.agenda-item--nueva { outline: 3px solid #0A7A45; outline-offset: 2px; animation: nueva-pulso 1s ease-in-out 3; }
+@keyframes nueva-pulso { 50% { outline-color: #86E3AE; } }
+.aviso {
+  position: fixed; left: 50%; bottom: 24px; z-index: 10; transform: translate(-50%, 20px);
+  width: max-content; max-width: calc(100% - 32px); padding: 14px 20px; border-radius: 12px;
+  font-size: 15px; font-weight: 600; color: #EAF6EF; background: #07301F;
+  box-shadow: 0 10px 30px rgba(7, 48, 31, .35); opacity: 0; transition: opacity .2s, transform .2s;
+}
+.aviso::before { content: "✓ "; color: #86E3AE; }
+.aviso--visible { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) {
+  .slot--nueva, .agenda-item--nueva { animation: none; }
+  .aviso { transition: none; }
+}

@@ -53,6 +53,7 @@
             <li><span class="ley-muestra ley-muestra--libre" aria-hidden="true"></span> <span><strong>Libre</strong>: se puede apartar</span></li>
             <li><span class="ley-muestra ley-muestra--ocupada" aria-hidden="true"></span> <span><strong>Ocupada</strong> (rayas): ya está reservada</span></li>
             <li><span class="ley-muestra ley-muestra--pasado" aria-hidden="true"></span> <span><strong>Ya pasó</strong>: la parte sombreada del día</span></li>
+            <li><span class="ley-muestra ley-muestra--bloqueada" aria-hidden="true"></span> <span><strong>Bloqueada</strong> (atenuada): esa hora ya transcurrió y no se puede reservar</span></li>
             <li><span class="ley-muestra ley-muestra--ahora" aria-hidden="true"></span> <span><strong>Ahora</strong>: la línea oscura marca la hora actual</span></li>
           </ul>
         </div>
@@ -62,7 +63,7 @@
             <li>Cada tarjeta dice si el cubículo está libre u ocupado <strong>ahora</strong> y hasta qué hora. Fuera del horario de operación dice <strong>Cerrado</strong>.</li>
             <li>La barra de la tarjeta es el día completo, de la apertura al cierre.</li>
             <li><strong>Toca una tarjeta</strong> para ver su detalle y su agenda del día.</li>
-            <li>La tabla de abajo muestra cada franja de una hora de todos los cubículos.</li>
+            <li>La tabla de abajo muestra cada franja de una hora de todos los cubículos. <strong>Toca una franja libre</strong> para reservarla directo.</li>
           </ol>
         </div>
       </div>
@@ -93,6 +94,9 @@
       <div class="detalle-accion" id="detalleAccion"></div>
     </div>
   </dialog>
+
+  <!-- T31: aviso de reserva exitosa (lo anuncia el lector de pantalla) -->
+  <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
 
   <script src="Script.js"></script>
 </body>

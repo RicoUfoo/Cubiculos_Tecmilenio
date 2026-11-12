@@ -17,6 +17,57 @@ const Config = {
   // T6: formato y zona horaria del reloj
   LOCALE: "es-MX",
   ZONA_HORARIA: "America/Monterrey",
+  // T26: mínimo de caracteres para el nombre del grupo
+  MIN_NOMBRE: 2,
+  // T31: cuánto tiempo se queda resaltada la reserva nueva y visible el aviso
+  AVISO_MS: 6000,
+};
+
+/* ===== 1b. Mensajes: catálogo centralizado (T30) =====
+   TODOS los textos de error y aviso viven aquí. Ninguna otra parte del código
+   escribe mensajes a mano: los pide por nombre (Mensajes.horaPasada(), etc.).
+   Para cambiar una redacción o traducir la página, basta con editar este objeto. */
+const Mensajes = {
+  // Ayudante: 9 → "09:00"
+  hora: h => `${String(h).padStart(2, "0")}:00`,
+  horario: () => `${Mensajes.hora(Config.ABRE)} – ${Mensajes.hora(Config.CIERRA)}`,
+
+  // Cubículo
+  cubiculoInvalido: () => "Elige un cubículo válido.",
+
+  // Nombre (T22 / T26)
+  nombreVacio: () => "Escribe el nombre del grupo o del responsable.",
+  nombreCorto: () => `Escribe al menos ${Config.MIN_NOMBRE} caracteres.`,
+
+  // Personas / aforo (T22)
+  personasVacio: () => "Indica cuántas personas van a usar el cubículo.",
+  personasInvalido: () => "Escribe un número entero, de 1 en adelante.",
+  personasAforo: max => `Este cubículo admite hasta ${max} personas.`,
+
+  // Hora de inicio y duración (T23)
+  inicioVacio: () => "Elige la hora de inicio.",
+  inicioInvalido: () => "Elige una hora de inicio válida.",
+  duracionVacia: () => "Elige la duración.",
+  duracionInvalida: () => "Elige una duración válida.",
+  duracionMaxima: () => `Cada reserva puede durar como máximo ${Config.MAX_HORAS} horas.`,
+
+  // Horario de operación (T27)
+  fueraDeHorario: () => `Solo se puede reservar dentro del horario de operación (${Mensajes.horario()}).`,
+  inicioNoAlineado: () => "La hora de inicio debe coincidir con el inicio de una franja.",
+  despuesDelCierre: fin => `La reserva terminaría a las ${Mensajes.hora(fin)}, después del cierre (${Mensajes.hora(Config.CIERRA)}).`,
+  yaCerro: () => `Ya cerró por hoy (horario ${Mensajes.horario()}). Vuelve mañana a partir de las ${Mensajes.hora(Config.ABRE)}.`,
+
+  // Horas ya transcurridas (T29)
+  horaPasada: () => "Esa hora ya pasó. Elige una hora a partir de ahora.",
+  horaYaNoDisponible: h => `Las ${Mensajes.hora(h)} ya no están disponibles (pasó la hora o alguien más la reservó). Elige otra.`,
+
+  // Conflictos de agenda (T28)
+  choqueCubiculo: lista => `Choca con otra reserva: ${lista}. Elige otro horario.`,
+  choqueGrupo: (nombre, lista) => `"${nombre}" ya tiene reservado el ${lista}. Un grupo no puede estar en dos cubículos a la vez.`,
+  conflictoExistente: (a, b) => `Conflicto de agenda: ${a} choca con ${b}.`,
+
+  // Reserva exitosa (T31)
+  reservaCreada: (cub, ini, fin, codigo) => `Reserva confirmada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}. Código ${codigo}.`,
 };
 
 /* ===== 2. Modelo: datos ===== */
@@ -193,11 +244,19 @@ const Modelo = {
     return valor("hour") + valor("minute") / 60;
   },
 
+  // T29: BLOQUEO DE HORAS YA TRANSCURRIDAS.
+  // Una franja "ya pasó" cuando su hora de fin ya llegó (hora de Monterrey).
+  // La franja en curso NO ha pasado: todavía se puede usar lo que queda de ella.
+  franjaYaPaso(franja, ahora = new Date()) {
+    return franja.fin <= this.horaDecimal(ahora);
+  },
+
   // T12: "firma" de la disponibilidad: un texto que cambia solo si cambia algo visible
   // (el día, el estado actual de algún cubículo o alguna franja). Sirve para saber
   // si hace falta volver a dibujar la pantalla.
   firmaDisponibilidad(ahora = new Date()) {
-    const partes = [this.hoy()];
+    // T29: la hora entera entra en la firma para redibujar justo cuando una franja pasa
+    const partes = [this.hoy(), `h${Math.floor(this.horaDecimal(ahora))}`];
     this.cubiculos().forEach(c => {
       const e = this.estadoActual(c.id, ahora);
       partes.push(`${c.id}:${e.estado}:${e.hasta}`);
@@ -236,9 +295,8 @@ const Reglas = {
   // T23: horas de inicio que se pueden elegir = franjas libres de hoy que todavía no terminan.
   iniciosDisponibles(cubId, ahora = new Date()) {
     const fecha = Modelo._fmtFechaISO.format(ahora);
-    const h = Modelo.horaDecimal(ahora);
     return Modelo.franjas()
-      .filter(f => f.fin > h && Modelo.estadoFranja(cubId, f, fecha) === "libre")
+      .filter(f => !Modelo.franjaYaPaso(f, ahora) && Modelo.estadoFranja(cubId, f, fecha) === "libre")
       .map(f => f.inicio);
   },
 
@@ -269,37 +327,22 @@ const Reglas = {
   // T27: revisa que una reserva [inicio, inicio + duracion) quepa en el horario de operación.
   // Devuelve null si está bien, o { campo, mensaje } con el primer problema encontrado.
   revisarHorario(inicio, duracion, ahora = new Date()) {
-    const pad = n => String(n).padStart(2, "0");
-    const abre = `${pad(Config.ABRE)}:00`;
-    const cierra = `${pad(Config.CIERRA)}:00`;
     const h = Modelo.horaDecimal(ahora);
+    const error = (campo, mensaje) => ({ campo, mensaje });
 
-    if (h >= Config.CIERRA) {
-      return { campo: "inicio", mensaje: `Ya cerró por hoy (horario ${abre} – ${cierra}). Vuelve mañana a partir de las ${abre}.` };
-    }
-    if (!Number.isInteger(inicio)) {
-      return { campo: "inicio", mensaje: "Elige una hora de inicio válida." };
-    }
-    if (inicio < Config.ABRE || inicio >= Config.CIERRA) {
-      return { campo: "inicio", mensaje: `Solo se puede reservar dentro del horario de operación (${abre} – ${cierra}).` };
-    }
-    if ((inicio - Config.ABRE) % Config.FRANJA_HORAS !== 0) {
-      return { campo: "inicio", mensaje: "La hora de inicio debe coincidir con el inicio de una franja." };
-    }
-    if (inicio + Config.FRANJA_HORAS <= h) {
-      return { campo: "inicio", mensaje: "Esa hora ya pasó. Elige una hora a partir de ahora." };
-    }
+    if (h >= Config.CIERRA) return error("inicio", Mensajes.yaCerro());
+    if (!Number.isInteger(inicio)) return error("inicio", Mensajes.inicioInvalido());
+    if (inicio < Config.ABRE || inicio >= Config.CIERRA) return error("inicio", Mensajes.fueraDeHorario());
+    if ((inicio - Config.ABRE) % Config.FRANJA_HORAS !== 0) return error("inicio", Mensajes.inicioNoAlineado());
+    // T29: no se puede reservar una franja que ya terminó
+    if (Modelo.franjaYaPaso({ fin: inicio + Config.FRANJA_HORAS }, ahora)) return error("inicio", Mensajes.horaPasada());
     if (duracion == null) return null;   // todavía no se eligió duración
 
     if (!Number.isInteger(duracion) || duracion < Config.FRANJA_HORAS || duracion % Config.FRANJA_HORAS !== 0) {
-      return { campo: "duracion", mensaje: "Elige una duración válida." };
+      return error("duracion", Mensajes.duracionInvalida());
     }
-    if (duracion > Config.MAX_HORAS) {
-      return { campo: "duracion", mensaje: `Cada reserva puede durar como máximo ${Config.MAX_HORAS} horas.` };
-    }
-    if (inicio + duracion > Config.CIERRA) {
-      return { campo: "duracion", mensaje: `La reserva terminaría a las ${pad(inicio + duracion)}:00, después del cierre (${cierra}).` };
-    }
+    if (duracion > Config.MAX_HORAS) return error("duracion", Mensajes.duracionMaxima());
+    if (inicio + duracion > Config.CIERRA) return error("duracion", Mensajes.despuesDelCierre(inicio + duracion));
     return null;
   },
 
@@ -337,9 +380,8 @@ const Reglas = {
 
   // T28: texto legible de una reserva que choca (ej. "Cubículo 2 de 10:00 a 12:00")
   describirReserva(r) {
-    const pad = n => String(n).padStart(2, "0");
     const cub = Modelo.cubiculos().find(c => c.id === r.cubiculo);
-    return `${cub ? cub.nombre : r.cubiculo} de ${pad(r.inicio)}:00 a ${pad(r.inicio + r.duracion)}:00`;
+    return `${cub ? cub.nombre : r.cubiculo} de ${Mensajes.hora(r.inicio)} a ${Mensajes.hora(r.inicio + r.duracion)}`;
   },
 
   // T28: revisa TODAS las reservas guardadas y devuelve los pares que chocan entre sí.
@@ -363,17 +405,17 @@ const Reglas = {
   validar(datos, ahora = new Date()) {
     const errores = {};
     const cub = Modelo.cubiculos().find(c => c.id === datos.cubiculo);
-    if (!cub) return { cubiculo: "Elige un cubículo válido." };
+    if (!cub) return { cubiculo: Mensajes.cubiculoInvalido() };
 
     const nombre = String(datos.nombre ?? "").trim();
-    if (!nombre) errores.nombre = "Escribe el nombre del grupo o del responsable.";
-    else if (nombre.length < 2) errores.nombre = "Escribe al menos 2 caracteres.";
+    if (!nombre) errores.nombre = Mensajes.nombreVacio();
+    else if (nombre.length < Config.MIN_NOMBRE) errores.nombre = Mensajes.nombreCorto();
 
     const max = this.aforo(cub);
     const personas = Number(datos.personas);
-    if (datos.personas === "" || datos.personas == null) errores.personas = "Indica cuántas personas van a usar el cubículo.";
-    else if (!Number.isInteger(personas) || personas < 1) errores.personas = "Escribe un número entero, de 1 en adelante.";
-    else if (personas > max) errores.personas = `Este cubículo admite hasta ${max} personas.`;
+    if (datos.personas === "" || datos.personas == null) errores.personas = Mensajes.personasVacio();
+    else if (!Number.isInteger(personas) || personas < 1) errores.personas = Mensajes.personasInvalido();
+    else if (personas > max) errores.personas = Mensajes.personasAforo(max);
 
     const inicio = Number(datos.inicio);
     const sinInicio = datos.inicio === "" || datos.inicio == null;
@@ -384,7 +426,7 @@ const Reglas = {
     const fueraDeHorario = this.revisarHorario(sinInicio ? NaN : inicio, duracion, ahora);
     if (sinInicio) {
       errores.inicio = this.estaAbierto(ahora) || Modelo.horaDecimal(ahora) < Config.ABRE
-        ? "Elige la hora de inicio."
+        ? Mensajes.inicioVacio()
         : fueraDeHorario.mensaje;
       return errores;
     }
@@ -393,7 +435,7 @@ const Reglas = {
       return errores;
     }
     if (sinDuracion) {
-      errores.duracion = "Elige la duración.";
+      errores.duracion = Mensajes.duracionVacia();
       return errores;
     }
 
@@ -404,11 +446,10 @@ const Reglas = {
       const lista = choques.cubiculo.map(r => this.describirReserva(r)).join(" y ");
       // Si choca justo en la hora de inicio, el problema es la hora; si choca después, la duración
       const chocaAlInicio = choques.cubiculo.some(r => inicio >= r.inicio && inicio < r.inicio + r.duracion);
-      errores[chocaAlInicio ? "inicio" : "duracion"] =
-        `Choca con otra reserva: ${lista}. Elige otro horario.`;
+      errores[chocaAlInicio ? "inicio" : "duracion"] = Mensajes.choqueCubiculo(lista);
     } else if (choques.grupo.length) {
       const lista = choques.grupo.map(r => this.describirReserva(r)).join(" y ");
-      errores.inicio = `"${nombre}" ya tiene reservado el ${lista}. Un grupo no puede estar en dos cubículos a la vez.`;
+      errores.inicio = Mensajes.choqueGrupo(nombre, lista);
     }
     return errores;
   },
@@ -431,15 +472,65 @@ const Reglas = {
       personas: Number(datos.personas),
     };
     Modelo.reservas.push(reserva);
+    Sincronizacion.avisar({ tipo: "reserva-creada", reserva });   // T32: toda la interfaz se entera
     return { ok: true, reserva };
   },
 
   cancelar(id) { /* historia 36 */ },
 };
 
+/* ===== 3b. Sincronización: avisa a toda la interfaz cuando cambian los datos (T32) =====
+   Quien cambia datos (Reglas.crear, y luego cancelar o la persistencia de la T33) llama
+   a Sincronizacion.avisar(). Quien muestra datos se suscribe con Sincronizacion.alCambiar().
+   Así ninguna parte de la pantalla se queda con información vieja. */
+const Sincronizacion = {
+  _oyentes: [],
+  alCambiar(fn) { this._oyentes.push(fn); },
+  avisar(cambio = { tipo: "cambio" }) {
+    this._oyentes.forEach(fn => {
+      try { fn(cambio); } catch (e) { console.error("Error al sincronizar la interfaz:", e); }
+    });
+  },
+};
+
 /* ===== 4. Vista: todo lo que toca el DOM ===== */
 const Vista = {
   $(id) { return document.getElementById(id); },
+
+  // T31: id de la reserva recién creada (se resalta en la tabla y en la agenda)
+  _resaltar: null,
+  _timerResaltar: null,
+  _timerAviso: null,
+
+  // T31: aviso flotante que se lee en voz alta con lector de pantalla (role="status")
+  avisar(texto) {
+    const el = this.$("aviso");
+    if (!el) return;
+    // Con el detalle abierto (modal), el resto de la página queda inactivo y tapado:
+    // el aviso se mueve dentro del diálogo para que se vea y se anuncie.
+    const dlg = this.$("detalle");
+    const destino = dlg && dlg.open ? dlg : document.body;
+    if (el.parentNode !== destino) destino.appendChild(el);
+    clearTimeout(this._timerAviso);
+    el.textContent = "";                 // vaciar primero para que se anuncie aunque se repita
+    el.hidden = false;
+    requestAnimationFrame(() => { el.textContent = texto; el.classList.add("aviso--visible"); });
+    this._timerAviso = setTimeout(() => {
+      el.classList.remove("aviso--visible");
+      el.hidden = true;
+    }, Config.AVISO_MS);
+  },
+
+  // T31: resalta una reserva unos segundos y luego vuelve a la normalidad
+  resaltar(id) {
+    clearTimeout(this._timerResaltar);
+    this._resaltar = id;
+    this.refrescar(true);
+    this._timerResaltar = setTimeout(() => {
+      this._resaltar = null;
+      this.refrescar(true);
+    }, Config.AVISO_MS);
+  },
 
   // Escapa texto antes de meterlo en innerHTML (los nombres de las reservas los escribe la gente)
   esc(texto) {
@@ -509,9 +600,10 @@ const Vista = {
 
     this.renderEstados(ahora);
     this.renderLineasTiempo();   // T13
-    this.renderFranjas();
+    this.renderFranjas(ahora);
     if (this._detalleCub) this.renderDetalle(ahora);   // T15: el detalle abierto también se actualiza
     this.renderAhora(ahora);     // T13
+    FormReserva.sincronizar(ahora);   // T32: si el formulario está abierto, sus horas también
 
     if (cub) {
       const mismo = document.querySelector(`.slot[data-cub="${cub}"][data-franja="${franja}"]`);
@@ -523,7 +615,7 @@ const Vista = {
   // T9: cuadrícula de franjas por cubículo.
   // Filas = cubículos (Modelo.cubiculos), columnas = franjas (Modelo.franjas, T8).
   // Cada celda es un botón con data-cub y data-franja; T10 les pondrá el color de libre/ocupada.
-  renderFranjas() {
+  renderFranjas(ahora = new Date()) {
     const franjas = Modelo.franjas();
     const cubiculos = Modelo.cubiculos();
     const pad = n => String(n).padStart(2, "0");
@@ -538,11 +630,22 @@ const Vista = {
         ${franjas.map(f => {
           // T10: libre u ocupada (color + rayas + texto para lector de pantalla)
           const estado = Modelo.estadoFranja(c.id, f);
+          // T29: las franjas que ya pasaron quedan bloqueadas (atenuadas, sin acción)
+          const pasada = Modelo.franjaYaPaso(f, ahora);
+          // T31: la reserva recién creada se resalta unos segundos
+          const r = estado === "ocupada" ? Modelo.reservaEn(c.id, f) : null;
+          const nueva = r && r.id && r.id === this._resaltar;
+          const clases = ["slot", `slot--${estado}`];
+          if (pasada) clases.push("slot--pasada");
+          if (nueva) clases.push("slot--nueva");
+          const accion = pasada ? "ya pasó, no se puede reservar"
+            : estado === "libre" ? "toca para reservar" : "toca para ver el detalle";
           return `
         <td>
-          <button class="slot slot--${estado}" type="button"
+          <button class="${clases.join(" ")}" type="button"
                   data-cub="${c.id}" data-franja="${f.id}" data-estado="${estado}"
-                  aria-label="${c.nombre}, ${f.etiqueta}, ${estado}"></button>
+                  ${pasada ? 'aria-disabled="true" title="Ya pasó"' : ""}
+                  aria-label="${c.nombre}, ${f.etiqueta}, ${estado}, ${accion}"></button>
         </td>`;
         }).join("")}
       </tr>`).join("");
@@ -655,12 +758,26 @@ const Vista = {
       if (tarjeta) this.abrirDetalle(tarjeta.dataset.cub);
     });
 
+    // T29 + T32: tocar una franja de la tabla.
+    //   libre y a futuro -> abre el formulario con esa hora ya elegida
+    //   ocupada          -> abre el detalle del cubículo
+    //   ya pasó          -> bloqueada, no hace nada
+    this.$("franjas").addEventListener("click", ev => {
+      const slot = ev.target.closest(".slot");
+      if (!slot || slot.getAttribute("aria-disabled") === "true") return;
+      const franja = Modelo.franjaPorId(slot.dataset.franja);
+      this.abrirDetalle(slot.dataset.cub);
+      if (franja && slot.dataset.estado === "libre") FormReserva.abrir({ inicio: franja.inicio });
+    });
+
     this.$("detalleCerrar").addEventListener("click", () => dlg.close());
     // Tocar fuera de la caja (en el fondo oscuro) también cierra
     dlg.addEventListener("click", ev => {
       if (ev.target === dlg) dlg.close();
     });
     dlg.addEventListener("close", () => {
+      const aviso = this.$("aviso");                  // T31: el aviso regresa a la página
+      if (aviso && aviso.parentNode === dlg) document.body.appendChild(aviso);
       const tarjeta = document.querySelector(`.booth[data-cub="${this._detalleCub}"]`);
       this._detalleCub = null;
       if (tarjeta) tarjeta.focus();
@@ -699,8 +816,9 @@ const Vista = {
       const quien = b.tipo === "ocupado"
         ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}`
         : `<strong>Libre</strong>`;
+      const nueva = b.reserva && b.reserva.id && b.reserva.id === this._resaltar;   // T31
       return `
-        <li class="agenda-item agenda-item--${b.tipo}" data-inicio="${b.inicio}" data-fin="${b.fin}">
+        <li class="agenda-item agenda-item--${b.tipo}${nueva ? " agenda-item--nueva" : ""}" data-inicio="${b.inicio}" data-fin="${b.fin}">
           <span class="agenda-hora">${rango}</span>
           <span class="agenda-que">${quien}</span>
           <span class="agenda-ahora" hidden>Ahora</span>
@@ -750,6 +868,9 @@ const Vista = {
     if (elHora && elHora.textContent !== hora) {
       elHora.textContent = hora;
       this.renderAhora(ahora);   // T13: cada minuto nuevo, mover la marca de "ahora"
+      // T29 + T32: en cuanto cambia la hora, bloquear la franja que acaba de pasar
+      // (refrescar solo redibuja si algo cambió, así que es barato llamarlo cada minuto)
+      this.refrescar(false, ahora);
     }
     if (elFecha && elFecha.textContent !== fecha) elFecha.textContent = fecha;
   },
@@ -841,11 +962,52 @@ const FormReserva = {
     });
   },
 
-  abrir() {
+  // "pre" permite llegar con la hora ya elegida (T29: al tocar una franja libre de la tabla)
+  abrir(pre = {}) {
     if (!Vista._detalleCub) return;
     this._cub = Vista._detalleCub;
     this._datos = { nombre: "", personas: "", inicio: "", duracion: "" };
+    if (pre.inicio != null && Reglas.iniciosDisponibles(this._cub).includes(pre.inicio)) {
+      this._datos.inicio = String(pre.inicio);
+      const durs = Reglas.duracionesPosibles(this._cub, pre.inicio);
+      if (durs.length) this._datos.duracion = String(durs[0]);
+    }
     this.mostrar("form");
+  },
+
+  // T26/T32: marca (o limpia) el error de un campo sin redibujar todo el formulario
+  marcarError(campo, mensaje = "") {
+    const input = this.$(this._ids[campo]);
+    const caja = this.$(`${this._ids[campo]}Error`);
+    if (input) input.setAttribute("aria-invalid", mensaje ? "true" : "false");
+    if (caja) caja.textContent = mensaje;
+  },
+
+  // T32: SINCRONIZACIÓN DEL FORMULARIO ABIERTO.
+  // Si mientras alguien llena el formulario pasa una hora (T29) o se reserva un horario,
+  // las opciones de hora se actualizan solas. Si la hora elegida ya no existe, se quita
+  // y se avisa con el mensaje del catálogo (T30). No redibuja si nada cambió (no pierde el foco).
+  sincronizar(ahora = new Date()) {
+    if (this._paso !== "form") return;
+    const sel = this.$("rInicio");
+    if (!sel) return;
+
+    const inicios = Reglas.iniciosDisponibles(this._cub, ahora);
+    const firma = inicios.join(",");
+    if (sel.dataset.opciones === firma) return;
+    sel.dataset.opciones = firma;
+
+    const elegido = this._datos.inicio;
+    const sigue = elegido === "" || inicios.includes(Number(elegido));
+    sel.innerHTML = `<option value="">${inicios.length ? "Elige una hora" : "Sin horas libres hoy"}</option>` +
+      inicios.map(h => `<option value="${h}">${this.pad(h)}:00</option>`).join("");
+    if (!sigue) {
+      this._datos.inicio = "";
+      this._datos.duracion = "";
+      this.marcarError("inicio", Mensajes.horaYaNoDisponible(Number(elegido)));
+    }
+    sel.value = this._datos.inicio;
+    this.actualizarDuraciones();
   },
 
   // Muestra un paso y manda el foco: al primer campo con error, o al título del paso.
@@ -936,7 +1098,7 @@ const FormReserva = {
         <div class="campos-fila">
           <div class="campo">
             <label for="rInicio">Hora de inicio</label>
-            <select id="rInicio" name="inicio" ${attrs("inicio")} required>
+            <select id="rInicio" name="inicio" data-opciones="${inicios.join(",")}" ${attrs("inicio")} required>
               <option value="">${inicios.length ? "Elige una hora" : "Sin horas libres hoy"}</option>${opInicio}
             </select>
             <small class="campo-error" id="rInicioError">${err("inicio")}</small>
@@ -1020,20 +1182,38 @@ const FormReserva = {
       return;
     }
     this._ultima = res.reserva;
-    Vista.refrescar(true);               // plano, franjas y agenda ya con la reserva nueva
+    // T32: Reglas.crear ya avisó a Sincronizacion -> plano, franjas, agenda y botón se redibujaron.
+    // T31: retroalimentación: pantalla de éxito, aviso hablado y resaltado de la reserva nueva
+    const r = res.reserva;
     this.mostrar("exito");
+    Vista.avisar(Mensajes.reservaCreada(this.cubiculo().nombre, r.inicio, r.inicio + r.duracion, r.id));
+    Vista.resaltar(r.id);
   },
 
+  // T31: RETROALIMENTACIÓN DE RESERVA EXITOSA.
+  // Ícono + título con foco + ficha con todos los datos + código para presentarse.
+  // Además (en confirmar): aviso flotante que lee el lector de pantalla y resaltado
+  // de la reserva en la tabla de franjas y en la agenda.
   renderExito() {
     const c = this.cubiculo();
     const r = this._ultima;
+    const fin = r.inicio + r.duracion;
     this.$("detalleReserva").innerHTML = `
-      <h3 class="reserva-titulo" id="reservaTitulo" tabindex="-1">¡Reserva confirmada!</h3>
-      <p class="detalle-dato">${Vista.esc(c.nombre)} · hoy de ${this.pad(r.inicio)}:00 a ${this.pad(r.inicio + r.duracion)}:00 ·
-        a nombre de <strong>${Vista.esc(r.nombre)}</strong> (${r.personas} ${r.personas === 1 ? "persona" : "personas"}).</p>
-      <p class="detalle-dato">Código: <strong>${r.id}</strong></p>
+      <div class="exito">
+        <span class="exito-icono" aria-hidden="true">✓</span>
+        <h3 class="reserva-titulo" id="reservaTitulo" tabindex="-1">¡Reserva confirmada!</h3>
+        <p class="detalle-dato">El cubículo ya aparece como ocupado en el plano y en la agenda.</p>
+      </div>
+      <dl class="detalle-ficha">
+        <div><dt>Cubículo</dt><dd>${Vista.esc(c.nombre)}</dd></div>
+        <div><dt>Código</dt><dd class="exito-codigo">${Vista.esc(r.id)}</dd></div>
+        <div class="ancho"><dt>Horario</dt><dd>Hoy, ${this.pad(r.inicio)}:00 – ${this.pad(fin)}:00 (${r.duracion} ${r.duracion === 1 ? "hora" : "horas"})</dd></div>
+        <div><dt>A nombre de</dt><dd>${Vista.esc(r.nombre)}</dd></div>
+        <div><dt>Personas</dt><dd>${r.personas}</dd></div>
+      </dl>
+      <p class="detalle-dato">Guarda tu código; te lo pueden pedir para usar el cubículo.</p>
       <div class="reserva-botones">
-        <button type="button" class="btn" data-accion="listo">Listo</button>
+        <button type="button" class="btn" data-accion="listo">Ver la agenda</button>
       </div>`;
   },
 };
@@ -1045,7 +1225,7 @@ const App = {
 
     // T28: avisar en la consola si las reservas cargadas ya traen choques entre sí
     Reglas.conflictosExistentes().forEach(([a, b]) => {
-      console.warn(`Conflicto de agenda: ${Reglas.describirReserva(a)} choca con ${Reglas.describirReserva(b)}.`);
+      console.warn(Mensajes.conflictoExistente(Reglas.describirReserva(a), Reglas.describirReserva(b)));
     });
     Vista.renderPlano();
     Vista.conectarDetalle(); // T15: tocar una tarjeta abre su detalle
@@ -1054,6 +1234,8 @@ const App = {
     cierrepanel.iniciar();
     accionreservar.iniciar();
     FormReserva.iniciar();   // T22–T26
+    // T32: cualquier cambio en las reservas redibuja toda la interfaz al instante
+    Sincronizacion.alCambiar(() => Vista.refrescar(true));
     setInterval(() => Vista.renderReloj(), 1000);
 
     // T12: refresco automático de la disponibilidad
