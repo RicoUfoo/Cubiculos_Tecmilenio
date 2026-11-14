@@ -122,6 +122,22 @@ const Mensajes = {
   botonConfirmarCancelar: () => "Sí, cancelar reserva",
   botonConservar: () => "No, conservar reserva",
   botonEntendido: () => "Entendido",
+
+  // Liberación inmediata del cubículo (T39)
+  liberarNoExiste: () => "Esa reserva ya no existe. Es posible que ya se haya liberado o cancelado.",
+  liberarNoEsTuya: () => "Solo puedes liberar un cubículo que reservaste desde este navegador.",
+  liberarNoEmpieza: () => "Tu reserva todavía no empieza. Si ya no la necesitas, cancélala.",
+  liberarYaTermino: () => "Esa reserva ya terminó: el cubículo ya está libre.",
+  liberarFallo: () => "No se pudo guardar la liberación en este navegador, así que tu reserva sigue activa. Intenta de nuevo.",
+  cubiculoLiberado: (cub, hasta) => `${cub} liberado: queda libre desde ahora hasta las ${Mensajes.hora(hasta)}.`,
+  botonLiberar: () => "Liberar ahora",
+  botonLiberarCubiculo: () => "Ya terminé · liberar cubículo",
+  liberarAriaLabel: (nombre, rango) => `Liberar ahora el cubículo de la reserva de ${nombre}, ${rango}`,
+  confirmarLiberarTitulo: () => "¿Liberar el cubículo ahora?",
+  confirmarLiberarAviso: () => "Tu reserva termina en este momento y el resto del horario queda libre para que otra persona lo aparte. Esta acción no se puede deshacer.",
+  liberarNoPosibleTitulo: () => "No se pudo liberar",
+  botonConfirmarLiberar: () => "Sí, liberar ahora",
+  botonSeguirUsando: () => "No, lo sigo usando",
 };
 
 /* ===== 1c. Identidad del dispositivo (T36) =====
@@ -594,6 +610,65 @@ const Reglas = {
     Sincronizacion.avisar({ tipo: "reserva-cancelada", reserva, yaGuardado: true });   // T32
     return { ok: true, reserva };
   },
+
+  // T39: LIBERACIÓN INMEDIATA DEL CUBÍCULO.
+  // Si un grupo termina antes, libera su reserva EN CURSO: la reserva se recorta para que
+  // termine al inicio de la franja actual, y desde esa franja hasta el fin original todo
+  // queda libre al instante (la franja en curso sí se puede reservar, T29).
+  // Lo que ya se usó se conserva en la agenda del día. Si se libera durante la primera
+  // franja, no queda nada usado y la reserva se da de baja completa.
+  // Diferencia con cancelar (T36): cancelar es para reservas que todavía no empiezan.
+
+  // ¿La reserva está ocurriendo ahora mismo? (hoy, inicio ≤ ahora < fin)
+  enCurso(reserva, ahora = new Date()) {
+    if (!reserva || reserva.fecha !== Modelo._fmtFechaISO.format(ahora)) return false;
+    const h = Modelo.horaDecimal(ahora);
+    return reserva.inicio <= h && h < reserva.inicio + reserva.duracion;
+  },
+
+  // Reserva propia que está en curso en un cubículo (o undefined)
+  reservaPropiaEnCurso(cubId, ahora = new Date()) {
+    return Modelo.reservas.find(r => r.cubiculo === cubId && Identidad.esMia(r) && this.enCurso(r, ahora));
+  },
+
+  // null si se puede liberar, o el mensaje (catálogo T30) de por qué no
+  motivoNoLiberar(reserva, ahora = new Date()) {
+    if (!reserva) return Mensajes.liberarNoExiste();
+    if (!Identidad.esMia(reserva)) return Mensajes.liberarNoEsTuya();
+    if (this.yaTermino(reserva, ahora)) return Mensajes.liberarYaTermino();
+    if (!this.enCurso(reserva, ahora)) return Mensajes.liberarNoEmpieza();
+    return null;
+  },
+
+  puedeLiberar(reserva, ahora = new Date()) {
+    return this.motivoNoLiberar(reserva, ahora) === null;
+  },
+
+  // Igual que cancelar (T38): transaccional. Si el guardado falla, se deshace todo.
+  // Devuelve { ok: true, reserva, desde, hasta, eliminada } o { ok: false, error }.
+  //   desde/hasta = horas que quedaron libres; eliminada = true si no quedó nada usado.
+  liberar(id, ahora = new Date()) {
+    const reserva = Modelo.reservas.find(r => r.id === id);
+    const motivo = this.motivoNoLiberar(reserva, ahora);
+    if (motivo) return { ok: false, error: motivo };
+
+    const franja = Modelo.franjaActual(ahora);
+    const desde = franja ? franja.inicio : reserva.inicio;
+    const hasta = reserva.inicio + reserva.duracion;
+    const usada = desde - reserva.inicio;   // horas que sí se usaron
+
+    const respaldo = Modelo.reservas;
+    // Se crea una copia recortada (no se modifica el objeto) para poder deshacer sin rastro
+    Modelo.reservas = usada > 0
+      ? respaldo.map(r => (r.id === id ? { ...r, duracion: usada } : r))
+      : respaldo.filter(r => r.id !== id);
+    if (!Almacen.guardarSeguro()) {
+      Modelo.reservas = respaldo;   // deshacer: la reserva sigue activa
+      return { ok: false, error: Mensajes.liberarFallo() };
+    }
+    Sincronizacion.avisar({ tipo: "cubiculo-liberado", reserva, desde, hasta, yaGuardado: true });   // T32
+    return { ok: true, reserva, desde, hasta, eliminada: usada <= 0 };
+  },
 };
 
 /* ===== 3b. Sincronización: avisa a toda la interfaz cuando cambian los datos (T32) =====
@@ -913,7 +988,10 @@ const Vista = {
       clearTimeout(this._timerResaltar);
       this._resaltar = null;
     }
-    if (FormReserva._ultima && !existe(FormReserva._ultima.id)) FormReserva._ultima = null;
+    if (FormReserva._ultima) {
+      // T39: si se liberó (recortó), apuntar a la versión actual, no a la vieja
+      FormReserva._ultima = Modelo.reservas.find(r => r.id === FormReserva._ultima.id) || null;
+    }
   },
 
   // Escapa texto antes de meterlo en innerHTML (los nombres de las reservas los escribe la gente)
@@ -1201,15 +1279,24 @@ const Vista = {
         ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}${Identidad.esMia(b.reserva) ? ` <span class="agenda-tuya">${Mensajes.etiquetaTuya()}</span>` : ""}`
         : `<strong>Libre</strong>`;
       const nueva = b.reserva && b.reserva.id && b.reserva.id === this._resaltar;   // T31
-      // T36: solo las reservas propias y vigentes llevan botón de cancelar
-      const cancelable = b.tipo === "ocupado" && Reglas.puedeCancelar(b.reserva, ahora);
+      // T39: la reserva propia EN CURSO se libera (lo usado se conserva);
+      // T36: las propias que todavía no empiezan se cancelan
+      const liberable = b.tipo === "ocupado" && Reglas.puedeLiberar(b.reserva, ahora);
+      const cancelable = !liberable && b.tipo === "ocupado" && Reglas.puedeCancelar(b.reserva, ahora);
+      let accion = "";
+      if (liberable) {
+        accion = `<button type="button" class="btn btn--chico agenda-cancelar" data-liberar="${this.esc(b.reserva.id)}"
+                  aria-label="${this.esc(Mensajes.liberarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonLiberar()}</button>`;
+      } else if (cancelable) {
+        accion = `<button type="button" class="btn btn--sec btn--chico agenda-cancelar" data-cancelar="${this.esc(b.reserva.id)}"
+                  aria-label="${this.esc(Mensajes.cancelarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonCancelarReserva()}</button>`;
+      }
       return `
         <li class="agenda-item agenda-item--${b.tipo}${nueva ? " agenda-item--nueva" : ""}" data-inicio="${b.inicio}" data-fin="${b.fin}">
           <span class="agenda-hora">${rango}</span>
           <span class="agenda-que">${quien}</span>
           <span class="agenda-ahora" hidden>Ahora</span>
-          ${cancelable ? `<button type="button" class="btn btn--sec btn--chico agenda-cancelar" data-cancelar="${this.esc(b.reserva.id)}"
-                  aria-label="${this.esc(Mensajes.cancelarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonCancelarReserva()}</button>` : ""}
+          ${accion}
         </li>`;
     }).join("");
 
@@ -1289,6 +1376,8 @@ const accionreservar = {
     if (!contenedor) return;
     contenedor.addEventListener("click", ev => {
       if (ev.target.closest("#btnReservar")) FormReserva.abrir();
+      const liberar = ev.target.closest("#btnLiberar");   // T39
+      if (liberar) LiberarCubiculo.pedir(liberar.dataset.liberar);
     });
   },
 
@@ -1296,6 +1385,9 @@ const accionreservar = {
     const cubId = Vista._detalleCub;
     const contenedor = document.getElementById("detalleAccion");
     if (!cubId || !contenedor) return;
+
+    // T39: si tu reserva está ocurriendo en este cubículo, la acción a la mano es liberarlo
+    const mia = Reglas.reservaPropiaEnCurso(cubId);
 
     const hayHoras = Reglas.iniciosDisponibles(cubId).length > 0;
     const estado = Modelo.estadoActual(cubId).estado;
@@ -1310,10 +1402,13 @@ const accionreservar = {
 
     // Solo se vuelve a dibujar si cambió algo (así no se pierde el foco del botón)
     const habilitado = hayHoras && !yaCerro;
-    const firma = `${texto}|${habilitado}`;
+    const firma = `${texto}|${habilitado}|${mia ? mia.id : ""}`;
     if (contenedor.dataset.firma === firma) return;
     contenedor.dataset.firma = firma;
-    contenedor.innerHTML = `<button type="button" class="btn" id="btnReservar"${habilitado ? "" : " disabled"}>${texto}</button>`;
+    const btnLiberar = mia
+      ? `<button type="button" class="btn btn--sec" id="btnLiberar" data-liberar="${Vista.esc(mia.id)}">${Mensajes.botonLiberarCubiculo()}</button>`
+      : "";
+    contenedor.innerHTML = `${btnLiberar}<button type="button" class="btn" id="btnReservar"${habilitado ? "" : " disabled"}>${texto}</button>`;
   }
 };
 
@@ -1768,6 +1863,50 @@ const CancelarReserva = {
   },
 };
 
+// T39. Liberación inmediata del cubículo //
+// Dos accesos: el botón "Liberar ahora" de la reserva en curso en la agenda, y
+// "Ya terminé · liberar cubículo" en la barra de acción del detalle (T19).
+// Pide confirmación (T37) y el recorte lo hace Reglas.liberar.
+const LiberarCubiculo = {
+  iniciar() {
+    const cuerpo = document.getElementById("detalleCuerpo");
+    if (!cuerpo) return;
+    cuerpo.addEventListener("click", ev => {
+      const boton = ev.target.closest("[data-liberar]");
+      if (boton) this.pedir(boton.dataset.liberar);
+    });
+  },
+
+  pedir(id) {
+    const reserva = Modelo.reservas.find(r => r.id === id);
+    const motivo = Reglas.motivoNoLiberar(reserva);
+    if (motivo) {   // p. ej. justo terminó la hora o se liberó en otra pestaña
+      Confirmacion.pedir({ titulo: Mensajes.liberarNoPosibleTitulo() });
+      Confirmacion.mostrarError(motivo);
+      return;
+    }
+
+    const cub = Modelo.cubiculos().find(c => c.id === reserva.cubiculo);
+    const fin = reserva.inicio + reserva.duracion;
+    const pad = FormReserva.pad;
+    Confirmacion.pedir({
+      titulo: Mensajes.confirmarLiberarTitulo(),
+      mensaje: Mensajes.confirmarLiberarAviso(),
+      datos: [
+        { etiqueta: "Cubículo", valor: cub.nombre },
+        { etiqueta: "Código", valor: reserva.id },
+        { etiqueta: "Tu reserva", valor: `Hoy, ${pad(reserva.inicio)}:00 – ${pad(fin)}:00`, ancho: true },
+        { etiqueta: "Queda libre", valor: `Desde ahora hasta las ${pad(fin)}:00`, ancho: true },
+      ],
+      textoConfirmar: Mensajes.botonConfirmarLiberar(),
+      textoConservar: Mensajes.botonSeguirUsando(),
+      alConfirmar: () => Reglas.liberar(id),
+      alTerminar: res => Vista.avisar(Mensajes.cubiculoLiberado(cub.nombre, res.hasta)),
+      vigente: () => Reglas.motivoNoLiberar(Modelo.reservas.find(r => r.id === id)),
+    });
+  },
+};
+
 /* ===== 5. App: punto de entrada que conecta todo ===== */
 const App = {
   iniciar() {
@@ -1783,6 +1922,7 @@ const App = {
     FormReserva.iniciar();   // T22–T26
     Confirmacion.iniciar();     // T37
     CancelarReserva.iniciar();  // T36
+    LiberarCubiculo.iniciar();  // T39
     // T33: todo cambio se guarda (excepto los que vienen del mismo almacén, para no hacer eco)
     // T38: las bajas (Reglas.cancelar) ya guardaron antes de avisar: no se guarda dos veces
     Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen" && !cambio.yaGuardado) Almacen.guardar(); });

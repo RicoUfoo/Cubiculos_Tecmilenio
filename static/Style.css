@@ -269,3 +269,8 @@ body:has(.detalle[open]) { overflow: hidden; }
   padding: 10px 12px; background: #FDF1F1; border: 1.5px solid #B84A4A; border-radius: 10px;
 }
 .confirmar-error:not(:empty)::before { content: "⚠ "; }
+
+/* T39: liberación inmediata. Con una reserva propia en curso, la barra de acción
+   lleva dos botones apilados: "Ya terminé · liberar cubículo" y "Reservar". */
+.detalle-accion { display: flex; flex-direction: column; gap: 8px; }
+.detalle-accion[hidden] { display: none; }   /* el display:flex no debe ganarle a hidden (formulario y confirmación) */
