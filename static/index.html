@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- T41: color de la barra del navegador en el celular -->
+  <meta name="theme-color" content="#07301F">
   <title>Reserva de Cubículos</title>
   <link rel="stylesheet" href="Style.css">
 </head>
@@ -65,6 +67,7 @@
             <li><strong>Toca una tarjeta</strong> para ver su detalle y su agenda del día.</li>
             <li>La tabla de abajo muestra cada franja de una hora de todos los cubículos. <strong>Toca una franja libre</strong> para reservarla directo.</li>
             <li>¿Terminaste antes? Abre tu cubículo y toca <strong>Liberar ahora</strong> para que otra persona lo pueda usar.</li>
+            <li>¿Cancelaste por error? Justo después aparece un aviso con <strong>Deshacer</strong> durante unos segundos.</li>
           </ol>
         </div>
       </div>
@@ -74,6 +77,8 @@
     <section class="franjas-sec" aria-labelledby="franjasTitulo">
       <h2 id="franjasTitulo">Franjas de hoy por cubículo</h2>
       <p class="franjas-info" id="franjasInfo"></p>
+      <!-- T41: en pantallas angostas la tabla se desliza de lado (el aviso se oculta cuando ya cabe completa) -->
+      <p class="franjas-hint">Desliza la tabla hacia los lados para ver todas las horas.</p>
       <div class="tabla-wrap" id="franjas"></div>
     </section>
   </main>
@@ -100,6 +105,8 @@
 
   <!-- T31: aviso de reserva exitosa (lo anuncia el lector de pantalla) -->
   <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
+  <!-- T40: aviso de cancelación con botón Deshacer (contenido desde Script.js) -->
+  <div class="aviso aviso--accion" id="avisoDeshacer" role="status" aria-live="polite" hidden></div>
 
   <script src="Script.js"></script>
 </body>

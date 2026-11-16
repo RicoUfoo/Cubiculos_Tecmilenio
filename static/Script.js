@@ -28,6 +28,8 @@ const Config = {
   MIN_NOMBRE: 2,
   // T31: cuánto tiempo se queda resaltada la reserva nueva y visible el aviso
   AVISO_MS: 6000,
+  // T40: cuánto tiempo se puede deshacer una cancelación
+  DESHACER_MS: 10000,
 };
 
 /* ===== 1b. Mensajes: catálogo centralizado (T30) =====
@@ -117,7 +119,7 @@ const Mensajes = {
   // Confirmación integrada para acciones destructivas (T37)
   confirmarEyebrow: () => "Confirmar",
   confirmarCancelarTitulo: () => "¿Cancelar esta reserva?",
-  confirmarCancelarAviso: () => "El horario quedará libre para que otra persona lo aparte. Esta acción no se puede deshacer.",
+  confirmarCancelarAviso: () => "El horario quedará libre para que otra persona lo aparte. Si fue un error, justo después tendrás unos segundos para deshacerlo.",
   cancelarNoPosibleTitulo: () => "No se pudo cancelar",
   botonConfirmarCancelar: () => "Sí, cancelar reserva",
   botonConservar: () => "No, conservar reserva",
@@ -138,6 +140,16 @@ const Mensajes = {
   liberarNoPosibleTitulo: () => "No se pudo liberar",
   botonConfirmarLiberar: () => "Sí, liberar ahora",
   botonSeguirUsando: () => "No, lo sigo usando",
+
+  // Aviso de cancelación con opción de deshacer (T40)
+  botonDeshacer: () => "Deshacer",
+  deshacerAriaLabel: () => "Deshacer la cancelación de la reserva",
+  reservaRestaurada: (cub, ini, fin) => `Reserva restaurada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}.`,
+  deshacerYaExiste: () => "Esa reserva ya estaba restaurada.",
+  deshacerYaTermino: () => "Ya no se puede deshacer: esa reserva ya terminó.",
+  deshacerChoque: lista => `Ya no se puede deshacer: ese horario ahora choca con ${lista}.`,
+  deshacerChoqueGrupo: (nombre, lista) => `Ya no se puede deshacer: "${nombre}" ya tiene reservado el ${lista}.`,
+  deshacerFallo: () => "No se pudo guardar la reserva restaurada en este navegador. Intenta de nuevo.",
 };
 
 /* ===== 1c. Identidad del dispositivo (T36) =====
@@ -611,6 +623,44 @@ const Reglas = {
     return { ok: true, reserva };
   },
 
+  // T40: DESHACER UNA CANCELACIÓN (T36).
+  // La reserva cancelada se vuelve a dar de alta TAL CUAL (mismo id y código, mismo dueño).
+  // Como el id de una baja nunca se reutiliza (T38), no puede chocar con una reserva nueva.
+  // Antes de restaurarla se revisa todo otra vez: en esos segundos el mundo pudo cambiar
+  // (alguien tomó el horario, la reserva terminó, otra pestaña la restauró).
+  // motivoNoDeshacer devuelve null si se puede, o el mensaje (catálogo T30) de por qué ya no.
+  motivoNoDeshacer(reserva, ahora = new Date()) {
+    if (!reserva) return Mensajes.cancelarNoExiste();
+    if (!Identidad.esMia(reserva)) return Mensajes.cancelarNoEsTuya();
+    if (Modelo.reservas.some(r => r.id === reserva.id)) return Mensajes.deshacerYaExiste();
+    if (this.yaTermino(reserva, ahora)) return Mensajes.deshacerYaTermino();
+    const choques = this.conflictos(reserva, reserva.id);   // T28
+    if (choques.cubiculo.length) {
+      return Mensajes.deshacerChoque(choques.cubiculo.map(r => this.describirReserva(r)).join(" y "));
+    }
+    if (choques.grupo.length) {
+      return Mensajes.deshacerChoqueGrupo(reserva.nombre, choques.grupo.map(r => this.describirReserva(r)).join(" y "));
+    }
+    return null;
+  },
+
+  // Transaccional, igual que cancelar (T38): si el guardado falla se deshace y se puede reintentar.
+  // Devuelve { ok: true, reserva } o { ok: false, error, reintentar? }.
+  deshacerCancelacion(reserva, ahora = new Date()) {
+    const motivo = this.motivoNoDeshacer(reserva, ahora);
+    if (motivo) return { ok: false, error: motivo };
+
+    const respaldo = Modelo.reservas;
+    const restaurada = { ...reserva };
+    Modelo.reservas = [...respaldo, restaurada];
+    if (!Almacen.guardarSeguro()) {
+      Modelo.reservas = respaldo;
+      return { ok: false, error: Mensajes.deshacerFallo(), reintentar: true };
+    }
+    Sincronizacion.avisar({ tipo: "reserva-restaurada", reserva: restaurada, yaGuardado: true });   // T32
+    return { ok: true, reserva: restaurada };
+  },
+
   // T39: LIBERACIÓN INMEDIATA DEL CUBÍCULO.
   // Si un grupo termina antes, libera su reserva EN CURSO: la reserva se recorta para que
   // termine al inicio de la franja actual, y desde esa franja hasta el fin original todo
@@ -1063,6 +1113,7 @@ const Vista = {
     this.renderEstados(ahora);
     this.renderLineasTiempo();   // T13
     this.renderFranjas(ahora);
+    this.centrarFranjaActual(ahora);   // T41
     if (this._detalleCub) this.renderDetalle(ahora);   // T15: el detalle abierto también se actualiza
     this.renderAhora(ahora);     // T13
     FormReserva.sincronizar(ahora);   // T32: si el formulario está abierto, sus horas también
@@ -1123,6 +1174,23 @@ const Vista = {
     if (info && franjas.length) {
       info.textContent = `${franjas.length} franjas de una hora, de ${franjas[0].etiqueta.slice(0, 5)} a ${franjas[franjas.length - 1].etiqueta.slice(-5)}.`;
     }
+  },
+
+  // T41: en pantallas angostas la tabla de franjas se desliza de lado. Al cargar se deja a la
+  // vista la hora actual (en vez de empezar siempre en la apertura). Solo la primera vez: después
+  // se respeta lo que la persona deslizó. Si no hay scroll (pantalla ancha) no hace nada.
+  _franjasCentradas: false,
+  centrarFranjaActual(ahora = new Date()) {
+    if (this._franjasCentradas) return;
+    const caja = this.$("franjas");
+    if (!caja || caja.scrollWidth <= caja.clientWidth) return;
+    const franja = Modelo.franjaActual(ahora);
+    const slot = franja && caja.querySelector(`.slot[data-franja="${franja.id}"]`);
+    if (!slot) return;
+    const etiqueta = caja.querySelector("tbody th");   // columna fija de nombres: tapa lo de la izquierda
+    caja.scrollLeft += slot.getBoundingClientRect().left - caja.getBoundingClientRect().left
+      - (etiqueta ? etiqueta.offsetWidth : 0) - 8;
+    this._franjasCentradas = true;
   },
 
   // T13: LÍNEA DE TIEMPO DIARIA DE OCUPACIÓN.
@@ -1251,6 +1319,7 @@ const Vista = {
     this._detalleCub = cubId;
     this.renderDetalle();
     if (!dlg.open) dlg.showModal();
+    Deshacer.ubicar();   // T40: un aviso de deshacer pendiente debe quedar dentro del modal
   },
 
   // T16 + T17: PANEL DE DETALLE DEL CUBÍCULO.
@@ -1857,9 +1926,138 @@ const CancelarReserva = {
       textoConfirmar: Mensajes.botonConfirmarCancelar(),
       textoConservar: Mensajes.botonConservar(),
       alConfirmar: () => Reglas.cancelar(id),
-      alTerminar: res => Vista.avisar(Mensajes.reservaCancelada(cub.nombre, res.reserva.inicio, fin)),
+      // T40: el aviso de cancelación trae el botón "Deshacer"
+      alTerminar: res => Deshacer.ofrecer({
+        texto: Mensajes.reservaCancelada(cub.nombre, res.reserva.inicio, fin),
+        reserva: res.reserva,
+      }),
       vigente: () => Reglas.motivoNoCancelar(Modelo.reservas.find(r => r.id === id)),
     });
+  },
+};
+
+// T40. Aviso de cancelación con opción de deshacer //
+// Al cancelar una reserva (T36) no sale un aviso cualquiera: sale uno con el botón "Deshacer"
+// durante Config.DESHACER_MS. Deshacer vuelve a crear LA MISMA reserva por
+// Reglas.deshacerCancelacion, que revisa todo otra vez (horario, choques, guardado).
+// Solo se puede deshacer la última cancelación (una nueva reemplaza al aviso anterior).
+// El aviso se pausa mientras se apunta o se enfoca, para no desaparecer mientras se decide.
+// Vive en memoria: si se recarga la página ya no hay deshacer.
+const Deshacer = {
+  _pendiente: null,   // { reserva }: copia de la reserva cancelada
+  _timer: null,
+  _procesando: false,
+
+  $(id) { return document.getElementById(id); },
+
+  iniciar() {
+    const el = this.$("avisoDeshacer");
+    if (!el) return;
+    el.addEventListener("click", ev => { if (ev.target.closest("[data-deshacer]")) this.ejecutar(); });
+    el.addEventListener("pointerenter", () => this.pausar());
+    el.addEventListener("pointerleave", () => this.reanudar());
+    el.addEventListener("focusin", () => this.pausar());
+    el.addEventListener("focusout", () => this.reanudar());
+    const dlg = this.$("detalle");
+    if (dlg) dlg.addEventListener("close", () => this.ubicar());   // al cerrar el detalle, el aviso vuelve a la página
+  },
+
+  // Con el detalle abierto (modal) el resto de la página queda tapado: el aviso va dentro del diálogo
+  ubicar() {
+    const el = this.$("avisoDeshacer");
+    if (!el) return;
+    const dlg = this.$("detalle");
+    const destino = dlg && dlg.open ? dlg : document.body;
+    if (el.parentNode !== destino) destino.appendChild(el);
+    el.classList.toggle("aviso--en-detalle", destino === dlg);
+    // T41: dentro del detalle, el aviso se coloca justo ENCIMA de la barra de acción (medida en
+    // pantalla) para no tapar el botón "Reservar", ni en celular (hoja abajo) ni en escritorio (modal centrado)
+    const barra = destino === dlg ? dlg.querySelector(".detalle-accion") : null;
+    const caja = barra && !barra.hidden ? barra.getBoundingClientRect() : null;
+    el.style.bottom = caja && caja.height ? `${Math.round(window.innerHeight - caja.top + 8)}px` : "";
+  },
+
+  html(texto, conBoton) {
+    return `<span class="aviso-texto">${Vista.esc(texto)}</span>` + (conBoton
+      ? `<button type="button" class="aviso-boton" data-deshacer aria-label="${Vista.esc(Mensajes.deshacerAriaLabel())}">${Mensajes.botonDeshacer()}</button>`
+      : "");
+  },
+
+  programar() {
+    clearTimeout(this._timer);
+    this._timer = setTimeout(() => this.cerrar(), this._pendiente ? Config.DESHACER_MS : Config.AVISO_MS);
+  },
+  pausar() { clearTimeout(this._timer); },
+  reanudar() {
+    const el = this.$("avisoDeshacer");
+    if (el && !el.hidden) this.programar();
+  },
+
+  ofrecer({ texto, reserva }) {
+    const el = this.$("avisoDeshacer");
+    if (!el) { Vista.avisar(texto); return; }   // sin el elemento, al menos el aviso normal
+    this.cerrar();                              // reemplaza el aviso anterior (si había)
+    this._pendiente = { reserva: { ...reserva } };
+    this.ubicar();
+    el.textContent = "";                        // vaciar antes de mostrar para que se anuncie
+    el.hidden = false;
+    requestAnimationFrame(() => {
+      if (!this._pendiente) return;
+      el.innerHTML = this.html(texto, true);
+      el.classList.add("aviso--visible");
+    });
+    this.programar();
+  },
+
+  // Muestra un problema en el mismo aviso. "reintentar" deja el botón (p. ej. falló el guardado).
+  mostrarError(texto, reintentar = false) {
+    const el = this.$("avisoDeshacer");
+    if (!el) return;
+    if (!reintentar) this._pendiente = null;
+    el.classList.add("aviso--error");
+    el.innerHTML = this.html(texto, reintentar);
+    el.hidden = false;
+    el.classList.add("aviso--visible");
+    this.programar();
+  },
+
+  ejecutar() {
+    const p = this._pendiente;
+    if (!p || this._procesando) return;
+    this._procesando = true;   // revisar() no debe tomar nuestro propio cambio por uno ajeno
+    let res;
+    try { res = Reglas.deshacerCancelacion(p.reserva); } finally { this._procesando = false; }
+    if (!res.ok) { this.mostrarError(res.error, res.reintentar); return; }
+
+    const r = res.reserva;
+    const cub = Modelo.cubiculos().find(c => c.id === r.cubiculo);
+    this.cerrar();
+    Vista.resaltar(r.id);   // T31: se ve dónde volvió
+    Vista.avisar(Mensajes.reservaRestaurada(cub.nombre, r.inicio, r.inicio + r.duracion));
+    const dlg = this.$("detalle");
+    if (dlg && dlg.open) {   // el botón que tenía el foco desapareció: el foco vuelve al título del detalle
+      const titulo = this.$("detalleTitulo");
+      titulo.setAttribute("tabindex", "-1");
+      titulo.focus();
+    }
+  },
+
+  // T38: si mientras el aviso está visible cambia algo que impide deshacer (alguien tomó el
+  // horario, otra pestaña ya la restauró), se avisa en el momento en vez de fallar al tocar.
+  revisar() {
+    if (!this._pendiente || this._procesando) return;
+    const motivo = Reglas.motivoNoDeshacer(this._pendiente.reserva);
+    if (motivo) this.mostrarError(motivo);
+  },
+
+  cerrar() {
+    clearTimeout(this._timer);
+    this._pendiente = null;
+    const el = this.$("avisoDeshacer");
+    if (!el) return;
+    el.classList.remove("aviso--visible", "aviso--error");
+    el.hidden = true;
+    el.textContent = "";
   },
 };
 
@@ -1923,12 +2121,13 @@ const App = {
     Confirmacion.iniciar();     // T37
     CancelarReserva.iniciar();  // T36
     LiberarCubiculo.iniciar();  // T39
+    Deshacer.iniciar();         // T40
     // T33: todo cambio se guarda (excepto los que vienen del mismo almacén, para no hacer eco)
     // T38: las bajas (Reglas.cancelar) ya guardaron antes de avisar: no se guarda dos veces
     Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen" && !cambio.yaGuardado) Almacen.guardar(); });
     // T38: tras CUALQUIER cambio (alta, baja, depuración, otra pestaña) se limpia lo que apuntaba
     // a reservas que ya no existen y se revisa si hay una confirmación pendiente sobre ellas
-    Sincronizacion.alCambiar(() => { Vista.limpiarHuerfanos(); Confirmacion.revisar(); });
+    Sincronizacion.alCambiar(() => { Vista.limpiarHuerfanos(); Confirmacion.revisar(); Deshacer.revisar(); });
     // T32: cualquier cambio en las reservas redibuja toda la interfaz al instante
     Sincronizacion.alCambiar(() => Vista.refrescar(true));
     // T33 + T32: si otra pestaña guarda reservas, esta pestaña las carga y se redibuja
