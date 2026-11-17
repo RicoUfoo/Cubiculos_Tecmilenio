@@ -5,19 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- T41: color de la barra del navegador en el celular -->
   <meta name="theme-color" content="#07301F">
-  <!-- T41 + T43: color de la barra del navegador en el celular, según el tema del sistema -->
   <meta name="theme-color" content="#07301F" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0F3B28" media="(prefers-color-scheme: dark)">
-  <!-- T43: tema claro u oscuro según la preferencia del sistema (los colores viven en Style.css) -->
   <meta name="color-scheme" content="light dark">
   <title>Reserva de Cubículos</title>
   <link rel="stylesheet" href="Style.css">
 </head>
 <body>
 
-  <!-- T1: Banner de aviso de cookies -->
-
-  
   <!-- T2: Página principal con propuesta de valor clara -->
   <header class="hero">
     <div class="wrap">
@@ -36,15 +31,21 @@
           <a class="cta" href="#cubiculos">Ver cubículos disponibles</a>
         </div>
 
-        <div class="clock">
-          <span class="clock-time" id="clockTime">--:--</span>
-          <span class="clock-date" id="clockDate"></span>
+        <div class="clock-and-theme">
+          <!-- T43: Botón para alternar el tema oscuro / claro manualmente -->
+          <button class="btn-tema" id="btnTema" type="button" aria-label="Cambiar tema oscuro o claro">
+            <span class="icono-tema" aria-hidden="true">🌓</span> Tema
+          </button>
+          <div class="clock">
+            <span class="clock-time" id="clockTime">--:--</span>
+            <span class="clock-date" id="clockDate"></span>
+          </div>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- T3: Plano de los 5 cubículos (se genera desde Script.js) -->
+  <!-- T3: Plano de los 5 cubículos -->
   <main class="contenido" id="cubiculos">
     <h2 id="planoTitulo">Plano de la sala · 5 cubículos</h2>
     <div class="booths" id="plano" aria-labelledby="planoTitulo"></div>
@@ -78,17 +79,16 @@
       </div>
     </section>
 
-    <!-- T9: Cuadrícula de franjas por cubículo (se genera desde Script.js) -->
+    <!-- T9: Cuadrícula de franjas por cubículo -->
     <section class="franjas-sec" aria-labelledby="franjasTitulo">
       <h2 id="franjasTitulo">Franjas de hoy por cubículo</h2>
       <p class="franjas-info" id="franjasInfo"></p>
-      <!-- T41: en pantallas angostas la tabla se desliza de lado (el aviso se oculta cuando ya cabe completa) -->
       <p class="franjas-hint">Desliza la tabla hacia los lados para ver todas las horas.</p>
       <div class="tabla-wrap" id="franjas"></div>
     </section>
   </main>
 
-  <!-- T15: detalle del cubículo. Se abre al tocar una tarjeta del plano (contenido desde Script.js) -->
+  <!-- T15: detalle del cubículo -->
   <dialog class="detalle" id="detalle" aria-labelledby="detalleTitulo">
     <div class="detalle-caja">
       <div class="detalle-cab">
@@ -99,18 +99,13 @@
         <button class="detalle-cerrar" id="detalleCerrar" type="button" aria-label="Cerrar detalle">&times;</button>
       </div>
       <div id="detalleCuerpo"></div>
-      <!-- T22–T26: formulario de reserva (se genera desde Script.js) -->
       <div id="detalleReserva" hidden></div>
-      <!-- T37: confirmación integrada para acciones destructivas (p. ej. T36 cancelar reserva); se genera desde Script.js -->
       <div id="detalleConfirmar" hidden></div>
-      <!-- T19: acción principal contextual (Reservar) · T39: Liberar cubículo si tu reserva está en curso -->
       <div class="detalle-accion" id="detalleAccion"></div>
     </div>
   </dialog>
 
-  <!-- T31: aviso de reserva exitosa (lo anuncia el lector de pantalla) -->
   <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
-  <!-- T40: aviso de cancelación con botón Deshacer (contenido desde Script.js) -->
   <div class="aviso aviso--accion" id="avisoDeshacer" role="status" aria-live="polite" hidden></div>
 
   <script src="Script.js"></script>

@@ -4,17 +4,48 @@
   --on-deep-muted: #A5CDB7;
   --accent: #86E3AE;
   --bg: #EDF3EF;
+  --card-bg: #FFFFFF;
+  --text-main: #0E2218;
+  --text-muted: #4F645A;
+  --border-color: #D0DDD5;
 }
+
+/* T43: Variables para el tema oscuro activado manualmente o por preferencia del sistema */
+[data-tema="dark"] {
+  --deep: #052014;
+  --on-deep: #EAF6EF;
+  --on-deep-muted: #8AAEA0;
+  --accent: #6BE19B;
+  --bg: #0B1611;
+  --card-bg: #13261D;
+  --text-main: #EAF6EF;
+  --text-muted: #A0B8AD;
+  --border-color: #234435;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="light"]) {
+    --deep: #052014;
+    --on-deep: #EAF6EF;
+    --on-deep-muted: #8AAEA0;
+    --accent: #6BE19B;
+    --bg: #0B1611;
+    --card-bg: #13261D;
+    --text-main: #EAF6EF;
+    --text-muted: #A0B8AD;
+    --border-color: #234435;
+  }
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
-  color: #0E2218;
+  color: var(--text-main);
 }
-/* T41: DISEÑO MOBILE-FIRST. Las reglas base son las del celular; lo de pantallas más grandes
-   se agrega con @media (min-width) en la sección T41 del final de este archivo. */
+
 .hero { background: var(--deep); color: var(--on-deep); padding: 28px 16px; }
 .wrap { max-width: 1000px; margin: 0 auto; }
 .top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; }
@@ -26,287 +57,213 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 .cta { display: block; margin-top: 20px; padding: 14px 22px; text-align: center; border-radius: 10px; background: var(--on-deep); color: var(--deep); font-weight: 600; text-decoration: none; }
 .cta:hover { background: #fff; }
 .cta:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* Reloj y botón de tema */
+.clock-and-theme { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.btn-tema {
+  appearance: none; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: var(--on-deep);
+  border: 1.5px solid var(--on-deep-muted); border-radius: 8px; display: flex; align-items: center; gap: 6px;
+}
+.btn-tema:hover { background: rgba(255, 255, 255, 0.2); }
+.btn-tema:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .clock { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .clock-time { font-family: ui-monospace, Menlo, monospace; font-size: 34px; }
 .clock-date { font-size: 13px; color: var(--on-deep-muted); }
 .contenido { max-width: 1000px; margin: 0 auto; padding: 28px 16px; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
-/* T3: plano de cubículos */
+/* Plano de cubículos */
 .booths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .booth:nth-child(5) { grid-column: span 2; }
 .booth {
-  appearance: none; font: inherit; color: inherit; cursor: pointer; text-align: left;
+  appearance: none; font: inherit; color: var(--text-main); cursor: pointer; text-align: left;
   display: flex; flex-direction: column; gap: 4px; padding: 14px;
-  background: #fff; border: 1.5px solid #D0DDD5; border-radius: 14px;
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 14px;
   transition: border-color .15s, transform .15s;
 }
-.booth:hover { border-color: #0A7A45; }
-@media (hover: hover) { .booth:hover { transform: translateY(-2px); } }   /* T41: sin "hover pegado" en pantallas táctiles */
-.booth:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
-.booth small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #4F645A; }
+.booth:hover { border-color: var(--accent); }
+@media (hover: hover) { .booth:hover { transform: translateY(-2px); } }
+.booth:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.booth small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
 .booth b { font-size: 36px; line-height: 1; }
-.booth span { font-size: 13px; color: #4F645A; }
-.door { margin-top: 18px; display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4F645A; }
-.door::before, .door::after { content: ""; flex: 1; border-top: 2px dashed #D0DDD5; }
-@media (prefers-reduced-motion: reduce) { .booth { transition: none; } }
+.booth span { font-size: 13px; color: var(--text-muted); }
+.door { margin-top: 18px; display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+.door::before, .door::after { content: ""; flex: 1; border-top: 2px dashed var(--border-color); }
 
-/* T9: cuadrícula de franjas por cubículo */
+/* Cuadrícula de franjas */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .franjas-sec { margin-top: 32px; }
-.franjas-info { margin: 4px 0 16px; font-size: 14px; color: #4F645A; }
-.franjas-hint { margin: -8px 0 12px; font-size: 13px; color: #4F645A; }
-/* T41: la tabla se desliza de lado en celular. Las sombras de los bordes (background-attachment: local)
-   aparecen solo cuando todavía hay contenido por ver hacia ese lado. */
+.franjas-info { margin: 4px 0 16px; font-size: 14px; color: var(--text-muted); }
+.franjas-hint { margin: -8px 0 12px; font-size: 13px; color: var(--text-muted); }
 .tabla-wrap {
   overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
-  border: 1.5px solid #D0DDD5; border-radius: 14px;
-  background:
-    linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center / 28px 100% no-repeat local,
-    linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center / 28px 100% no-repeat local,
-    radial-gradient(farthest-side at 0 50%, rgba(7, 48, 31, .25), rgba(7, 48, 31, 0)) left center / 10px 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, rgba(7, 48, 31, .25), rgba(7, 48, 31, 0)) right center / 10px 100% no-repeat scroll,
-    #fff;
+  border: 1.5px solid var(--border-color); border-radius: 14px; background: var(--card-bg);
 }
 .tabla-franjas { border-collapse: separate; border-spacing: 4px; width: 100%; }
-.tabla-franjas th { font-size: 12px; font-weight: 600; color: #4F645A; text-align: center; padding: 6px 2px; }
-.tabla-franjas thead th:first-child, .tabla-franjas tbody th { text-align: left; padding-left: 10px; white-space: nowrap; position: sticky; left: 0; background: #fff; }
-.tabla-franjas tbody th { font-size: 13px; color: #0E2218; }
+.tabla-franjas th { font-size: 12px; font-weight: 600; color: var(--text-muted); text-align: center; padding: 6px 2px; }
+.tabla-franjas thead th:first-child, .tabla-franjas tbody th { text-align: left; padding-left: 10px; white-space: nowrap; position: sticky; left: 0; background: var(--card-bg); }
+.tabla-franjas tbody th { font-size: 13px; color: var(--text-main); }
 .tabla-franjas td { padding: 0; }
 .slot {
   appearance: none; display: block; width: 100%; min-width: 44px; height: 44px; cursor: pointer;
-  background: #F4F8F5; border: 1.5px solid #D0DDD5; border-radius: 8px;
+  background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 8px;
 }
-.slot:hover { border-color: #0A7A45; }
-.slot:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
+.slot:hover { border-color: var(--accent); }
+.slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-/* T10: distinción visual de franjas libres y ocupadas
-   No depende solo del color: la ocupada lleva rayas y cursor de "no disponible". */
-.slot--libre { background: #E3F4EA; border-color: #7FCBA0; }
-.slot--libre:hover { background: #CFEBDB; border-color: #0A7A45; }
+/* Franjas libres y ocupadas */
+.slot--libre { background: rgba(134, 227, 174, 0.15); border-color: var(--accent); }
+.slot--libre:hover { background: rgba(134, 227, 174, 0.3); border-color: var(--accent); }
 .slot--ocupada {
-  background: repeating-linear-gradient(45deg, #F6D5D5 0 4px, #EFBFBF 4px 8px);
+  background: repeating-linear-gradient(45deg, rgba(217, 139, 139, 0.2) 0 4px, rgba(217, 139, 139, 0.4) 4px 8px);
   border-color: #D98B8B;
   cursor: not-allowed;
 }
-.slot--ocupada:hover { border-color: #B84A4A; }
 
-/* T11: texto del estado actual dentro de la tarjeta del plano
-   (los colores del estado los define la T5) */
-.booth .estado-actual { margin-top: 6px; font-size: 12px; font-weight: 600; color: #0E2218; }
-/* T13: línea de tiempo diaria de ocupación (chica en el plano, grande en el detalle) */
+.booth .estado-actual { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--text-main); }
 .booth .lt-slot { display: block; margin-top: 10px; }
 .linea-tiempo { display: block; }
 .lt-pista {
   position: relative; display: block; height: 10px; overflow: hidden;
-  background: #E3F4EA; border: 1px solid #7FCBA0; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--border-color); border-radius: 999px;
 }
-.lt-pasado { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(14, 34, 24, .10); }
+.lt-pasado { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(120, 120, 120, 0.15); }
 .lt-bloque {
   position: absolute; top: 0; bottom: 0;
   background: repeating-linear-gradient(45deg, #E9A9A9 0 3px, #D98B8B 3px 6px);
 }
-.lt-ahora { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #0E2218; }
-.linea-tiempo .lt-resumen { display: block; margin-top: 6px; font-size: 12px; color: #4F645A; }
+.lt-ahora { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text-main); }
+.linea-tiempo .lt-resumen { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); }
 .linea-tiempo--grande .lt-pista { height: 24px; border-radius: 8px; }
-.lt-horas { position: relative; display: block; height: 16px; margin-top: 4px; font-size: 11px; color: #4F645A; }
+.lt-horas { position: relative; display: block; height: 16px; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
 .lt-horas span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
-.lt-horas span:first-child { transform: none; }
-.lt-horas span:nth-child(even) { display: none; }   /* T41: en celular solo cada 4 h */
-/* T41: la columna fija de nombres debe quedar POR ENCIMA de las franjas que se deslizan por debajo
-   (las franjas bloqueadas tienen opacity, que las pintaría encima), y tapa también los huecos de 4 px. */
-.tabla-franjas thead th:first-child, .tabla-franjas tbody th { z-index: 2; box-shadow: -4px 0 0 #fff, 4px 0 0 #fff; }
-.lt-horas span:last-child { transform: translateX(-100%); }
+.tabla-franjas thead th:first-child, .tabla-franjas tbody th { z-index: 2; box-shadow: -4px 0 0 var(--card-bg), 4px 0 0 var(--card-bg); }
 
-/* T15: detalle del cubículo */
+/* Panel de detalle */
 body:has(.detalle[open]) { overflow: hidden; }
 .detalle {
-  --pad: 20px;   /* T41: el relleno del panel; la barra de acción (T19) lo usa para llegar a los bordes */
+  --pad: 20px;
   width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh;
-  margin: auto 0 0; padding: 0;   /* T41: en celular sale desde abajo, como hoja */
-  border: none; border-radius: 16px 16px 0 0; color: #0E2218; background: #fff;
-  box-shadow: 0 20px 60px rgba(7, 48, 31, .35);
+  margin: auto 0 0; padding: 0;
+  border: none; border-radius: 16px 16px 0 0; color: var(--text-main); background: var(--card-bg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
-.detalle::backdrop { background: rgba(7, 48, 31, .55); }
-.detalle[open] { animation: detalle-entra .18s ease-out; }
-@keyframes detalle-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.detalle::backdrop { background: rgba(0, 0, 0, 0.55); }
 .detalle-caja { padding: var(--pad); }
 .detalle-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.detalle-eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #4F645A; }
+.detalle-eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
 .detalle h2 { margin: 0; font-size: 24px; line-height: 1.1; }
 .detalle-cerrar {
   appearance: none; flex: none; width: 44px; height: 44px; cursor: pointer;
-  font-size: 24px; line-height: 1; color: #0E2218;
-  background: #F4F8F5; border: 1.5px solid #D0DDD5; border-radius: 10px;
+  font-size: 24px; line-height: 1; color: var(--text-main);
+  background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 10px;
 }
-.detalle-cerrar:hover { border-color: #0A7A45; }
-.detalle-cerrar:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
-.detalle-dato { margin: 12px 0 0; font-size: 14px; color: #4F645A; }
+.detalle-cerrar:hover { border-color: var(--accent); }
+.detalle-dato { margin: 12px 0 0; font-size: 14px; color: var(--text-muted); }
 .detalle-estado {
   display: inline-block; margin: 14px 0 0; padding: 6px 12px; border-radius: 999px;
-  font-size: 14px; font-weight: 600; background: #F4F8F5; border: 1.5px solid #D0DDD5;
+  font-size: 14px; font-weight: 600; background: var(--bg); border: 1.5px solid var(--border-color);
 }
-.detalle-estado[data-estado="libre"] { background: #E3F4EA; border-color: #7FCBA0; }
-.detalle-estado[data-estado="ocupado"] { background: #F6D5D5; border-color: #D98B8B; }
-.detalle-sub { margin: 22px 0 10px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: #4F645A; }
-@media (prefers-reduced-motion: reduce) { .detalle[open] { animation: none; } }
+.detalle-sub { margin: 22px 0 10px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
 
-/* T14: leyenda y guía de lectura */
-.leyenda { margin-top: 24px; padding: 16px; background: #fff; border: 1.5px solid #D0DDD5; border-radius: 14px; }
+/* Leyenda */
+.leyenda { margin-top: 24px; padding: 16px; background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 14px; }
 .leyenda-cols { display: grid; grid-template-columns: 1fr; gap: 20px 32px; }
-.leyenda h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #4F645A; }
+.leyenda h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .leyenda-lista { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
 .leyenda-lista li { display: flex; align-items: center; gap: 10px; }
-.leyenda-guia { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #0E2218; }
-.ley-muestra { flex: none; width: 36px; height: 18px; border: 1.5px solid #D0DDD5; border-radius: 6px; }
-.ley-muestra--libre { background: #E3F4EA; border-color: #7FCBA0; }
+.leyenda-guia { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--text-main); }
+.ley-muestra { flex: none; width: 36px; height: 18px; border: 1.5px solid var(--border-color); border-radius: 6px; }
+.ley-muestra--libre { background: rgba(134, 227, 174, 0.2); border-color: var(--accent); }
 .ley-muestra--ocupada { background: repeating-linear-gradient(45deg, #F6D5D5 0 4px, #EFBFBF 4px 8px); border-color: #D98B8B; }
-.ley-muestra--pasado { background: rgba(14, 34, 24, .10); }
-.ley-muestra--ahora { background: linear-gradient(#0E2218, #0E2218) center / 2px 100% no-repeat, #fff; }
 
-/* T16: ficha del panel de detalle */
+/* Ficha del detalle */
 .detalle-ficha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
-.detalle-ficha div { padding: 10px 12px; background: #F4F8F5; border: 1.5px solid #D0DDD5; border-radius: 10px; }
-.detalle-ficha dt { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #4F645A; }
+.detalle-ficha div { padding: 10px 12px; background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 10px; }
+.detalle-ficha dt { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
 .detalle-ficha dd { margin: 4px 0 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 
-/* T17: agenda cronológica del día
-   Libre y ocupado se distinguen por texto, color y borde (no solo por color). */
+/* Agenda */
 .agenda { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .agenda-item {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px;
-  grid-template-areas: "hora ahora" "que que" "accion accion";   /* T41: en celular, 3 filas */
+  grid-template-areas: "hora ahora" "que que" "accion accion";
   padding: 10px 12px; font-size: 14px;
-  background: #fff; border: 1.5px solid #D0DDD5; border-left-width: 6px; border-radius: 10px;
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-left-width: 6px; border-radius: 10px;
 }
-.agenda-item--libre { background: #E3F4EA; border-color: #7FCBA0; }
-.agenda-item--ocupado { background: #F6D5D5; border-color: #D98B8B; }
+.agenda-item--libre { border-color: var(--accent); }
+.agenda-item--ocupado { border-color: #D98B8B; }
 .agenda-hora { grid-area: hora; font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: nowrap; }
 .agenda-que { grid-area: que; min-width: 0; overflow-wrap: anywhere; }
 .agenda-ahora {
   grid-area: ahora;
   padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
-  letter-spacing: .06em; text-transform: uppercase; background: #0E2218; color: #EAF6EF;
+  letter-spacing: .06em; text-transform: uppercase; background: var(--text-main); color: var(--bg);
 }
 .agenda-item--pasado { opacity: .55; }
-.agenda-item--ahora { box-shadow: 0 0 0 2px #0E2218; }
+.agenda-item--ahora { box-shadow: 0 0 0 2px var(--text-main); }
 
-/* T19: botón principal del detalle (barra fija abajo del panel) */
+/* Botones */
 .detalle-accion {
   position: sticky; bottom: 0; margin: 20px calc(var(--pad) * -1) calc(var(--pad) * -1);
   padding: 14px var(--pad); padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  background: #fff; border-top: 1.5px solid #D0DDD5;
+  background: var(--card-bg); border-top: 1.5px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;
 }
 .detalle-accion .btn { width: 100%; }
 .btn {
   appearance: none; font: inherit; font-weight: 600; cursor: pointer;
-  min-height: 44px; padding: 12px 22px; color: #EAF6EF; background: #07301F; touch-action: manipulation;
-  border: 1.5px solid #07301F; border-radius: 10px;
+  min-height: 44px; padding: 12px 22px; color: var(--on-deep); background: var(--deep); touch-action: manipulation;
+  border: 1.5px solid var(--deep); border-radius: 10px;
 }
-.btn:hover { background: #0A7A45; border-color: #0A7A45; }
-.btn:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
-.btn--sec { color: #07301F; background: #fff; border-color: #D0DDD5; }
-.btn--sec:hover { color: #07301F; background: #F4F8F5; }
-.btn:disabled { color: #4F645A; background: #E6ECE8; border-color: #D0DDD5; cursor: not-allowed; }
+.btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn--sec { color: var(--text-main); background: var(--card-bg); border-color: var(--border-color); }
+.btn--sec:hover { background: var(--bg); color: var(--text-main); }
+.btn:disabled { color: var(--text-muted); background: var(--bg); border-color: var(--border-color); cursor: not-allowed; }
 
-/* T22–T26: formulario, resumen y confirmación de la reserva */
+/* Formulario */
 .reserva-titulo { margin: 18px 0 4px; font-size: 20px; }
-.reserva-titulo:focus-visible { outline: 3px solid #0A7A45; outline-offset: 4px; border-radius: 6px; }
 .campo { margin-top: 16px; }
 .campo label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
 .campo input, .campo select {
-  width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; font-size: 16px; color: #0E2218;
-  background: #fff; border: 1.5px solid #D0DDD5; border-radius: 10px;
+  width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text-main);
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 10px;
 }
-.campo input:focus-visible, .campo select:focus-visible { outline: 3px solid #0A7A45; outline-offset: 2px; }
-.campo select:disabled { color: #4F645A; background: #F4F8F5; }
-.campo small { display: block; margin-top: 6px; font-size: 13px; color: #4F645A; }
-/* Error: borde rojo + ícono + texto (no depende solo del color) */
-.campo [aria-invalid="true"] { border-color: #B84A4A; background: #FDF1F1; }
-.campo .campo-error { color: #9B2C2C; font-weight: 600; }
-.campo .campo-error:not(:empty)::before { content: "⚠ "; }
+.campo small { display: block; margin-top: 6px; font-size: 13px; color: var(--text-muted); }
 .campos-fila { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
 .detalle-ficha .ancho { grid-column: span 2; }
-.reserva-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }   /* T41: en celular, botones apilados de ancho completo */
+.reserva-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .reserva-botones .btn { width: 100%; }
-/* T29: franjas ya transcurridas: bloqueadas.
-   No depende solo del color: van atenuadas, con una raya cruzada y cursor de "no disponible". */
-.slot--pasada,
-.slot--pasada:hover {
-  opacity: .4; cursor: not-allowed; border-color: #D0DDD5;
-  background-image: linear-gradient(to top right, transparent calc(50% - 1px), #4F645A 50%, transparent calc(50% + 1px));
-}
-.slot--libre.slot--pasada { background-color: #E3F4EA; }
-.ley-muestra--bloqueada {
-  opacity: .5; background: #E3F4EA linear-gradient(to top right, transparent calc(50% - 1px), #4F645A 50%, transparent calc(50% + 1px));
-}
 
-/* T31: retroalimentación de reserva exitosa */
-.exito { text-align: center; }
-.exito-icono {
-  display: inline-grid; place-items: center; width: 56px; height: 56px; margin-top: 8px;
-  font-size: 30px; font-weight: 700; color: #EAF6EF; background: #0A7A45; border-radius: 50%;
-}
-.exito-codigo { font-family: ui-monospace, Menlo, monospace; letter-spacing: .05em; }
-/* Reserva recién creada: borde grueso + pulso (sin animación si el usuario la desactiva) */
-.slot--nueva { outline: 3px solid #0A7A45; outline-offset: 1px; animation: nueva-pulso 1s ease-in-out 3; }
-.agenda-item--nueva { outline: 3px solid #0A7A45; outline-offset: 2px; animation: nueva-pulso 1s ease-in-out 3; }
-@keyframes nueva-pulso { 50% { outline-color: #86E3AE; } }
+/* Franjas pasadas / avisos */
+.slot--pasada { opacity: .4; cursor: not-allowed; border-color: var(--border-color); }
 .aviso {
   position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 10; transform: translate(-50%, 20px);
   width: max-content; max-width: calc(100% - 32px); padding: 14px 20px; border-radius: 12px;
-  font-size: 15px; font-weight: 600; color: #EAF6EF; background: #07301F;
-  box-shadow: 0 10px 30px rgba(7, 48, 31, .35); opacity: 0; transition: opacity .2s, transform .2s;
+  font-size: 15px; font-weight: 600; color: var(--on-deep); background: var(--deep);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity .2s, transform .2s;
 }
-.aviso::before { content: "✓ "; color: #86E3AE; }
 .aviso--visible { opacity: 1; transform: translate(-50%, 0); }
-@media (prefers-reduced-motion: reduce) {
-  .slot--nueva, .agenda-item--nueva { animation: none; }
-  .aviso { transition: none; }
-}
 
-/* T36: cancelar una reserva propia (etiqueta y botón dentro de la agenda) */
 .agenda-tuya {
   display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: #07301F; background: #fff; border: 1.5px solid #0A7A45;
+  color: var(--deep); background: var(--card-bg); border: 1.5px solid var(--accent);
 }
-.agenda-cancelar { grid-area: accion; width: 100%; }   /* T41: botón ancho y fácil de tocar en celular */
+.agenda-cancelar { grid-area: accion; width: 100%; }
 .btn--chico { min-height: 44px; padding: 8px 14px; font-size: 14px; }
-
-/* T37: confirmación integrada para acciones destructivas.
-   El botón de peligro es rojo y además dice claramente qué va a pasar (no depende solo del color). */
 .btn--peligro { color: #fff; background: #9B2C2C; border-color: #9B2C2C; }
-.btn--peligro:hover { background: #7F2323; border-color: #7F2323; }
-.btn--peligro:focus-visible { outline: 3px solid #B84A4A; outline-offset: 2px; }
 .confirmar-error { margin: 14px 0 0; font-size: 14px; font-weight: 600; color: #9B2C2C; }
-.confirmar-error:not(:empty) {
-  padding: 10px 12px; background: #FDF1F1; border: 1.5px solid #B84A4A; border-radius: 10px;
-}
-.confirmar-error:not(:empty)::before { content: "⚠ "; }
 
-/* T39: liberación inmediata. Con una reserva propia en curso, la barra de acción
-   lleva dos botones apilados: "Ya terminé · liberar cubículo" y "Reservar". */
-.detalle-accion { display: flex; flex-direction: column; gap: 8px; }
-.detalle-accion[hidden] { display: none; }   /* el display:flex no debe ganarle a hidden (formulario y confirmación) */
-
-/* T40: aviso de cancelación con botón "Deshacer" (misma base que .aviso) */
 .aviso--accion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
-.aviso--accion[hidden] { display: none; }   /* el display:flex no debe ganarle a hidden */
-.aviso--accion::before { content: none; }
-.aviso-texto { min-width: 0; }
-.aviso--accion .aviso-texto::before { content: "✓ "; color: #86E3AE; }
-.aviso--error .aviso-texto::before { content: "⚠ "; color: #F6D5D5; }
+.aviso--accion[hidden] { display: none; }
 .aviso-boton {
   appearance: none; font: inherit; font-weight: 700; cursor: pointer;
-  min-height: 44px; padding: 8px 18px; color: #86E3AE; background: transparent;
-  border: 1.5px solid #86E3AE; border-radius: 10px; touch-action: manipulation;
+  min-height: 44px; padding: 8px 18px; color: var(--accent); background: transparent;
+  border: 1.5px solid var(--accent); border-radius: 10px;
 }
-.aviso-boton:hover { background: rgba(134, 227, 174, .15); }
-.aviso-boton:focus-visible { outline: 3px solid #86E3AE; outline-offset: 2px; }
-/* Dentro del detalle, la posición vertical del aviso la calcula Deshacer.ubicar() (queda sobre la barra de acción) */
 
-/* T41: de aquí en adelante, lo que cambia al crecer la pantalla (mobile-first: solo min-width) */
 @media (min-width: 480px) {
   .campos-fila { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reserva-botones { flex-direction: row; justify-content: flex-end; }
@@ -316,34 +273,20 @@ body:has(.detalle[open]) { overflow: hidden; }
     grid-template-areas: "hora que ahora" "accion accion accion";
   }
   .agenda-cancelar { width: auto; justify-self: start; }
-  .lt-horas span:nth-child(even) { display: block; }
 }
 @media (min-width: 640px) {
   .hero { padding: 40px 20px; }
-  .lede { font-size: 18px; }
-  .cta { display: inline-block; padding: 12px 22px; }
-  .clock { align-items: flex-end; }
   .contenido { padding: 40px 20px; }
   .booths { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
   .booth:nth-child(-n+3) { grid-column: span 2; }
   .booth:nth-child(n+4) { grid-column: span 3; }
-  .booth { padding: 16px; }
-  .franjas-sec { margin-top: 48px; }
   .detalle {
     --pad: 24px;
-    width: min(560px, calc(100% - 32px)); max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px);
+    width: min(560px, calc(100% - 32px)); max-height: calc(100vh - 48px);
     margin: auto; border-radius: 16px;
   }
-  .detalle h2 { font-size: 28px; }
-  .detalle-accion { border-radius: 0 0 16px 16px; }
-  .detalle-ficha { gap: 10px; }
-  .leyenda { padding: 18px 20px; }
 }
 @media (min-width: 720px) {
   .leyenda-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .franjas-hint { display: none; }   /* ya cabe completa */
-}
-@media (min-width: 900px) and (pointer: fine) {
-  .slot { height: 38px; }
-  .btn--chico { min-height: 36px; }
+  .franjas-hint { display: none; }
 }
