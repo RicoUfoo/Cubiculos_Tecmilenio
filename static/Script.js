@@ -637,7 +637,7 @@ const GestionTema = {
   esOscuro() {
     const manual = document.documentElement.dataset.tema;
     if (manual) return manual === "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   },
 
   // T45: el botón es un interruptor: aria-pressed le dice al lector de pantalla si el tema oscuro está activo
@@ -655,22 +655,66 @@ const GestionTema = {
     let temaGuardado = null;
     try { temaGuardado = localStorage.getItem(Config.CLAVE_TEMA); } catch (e) {}
 
-    if (temaGuardado) {
+    // T49: solo se aceptan valores conocidos (un valor basura dejaba la página sin tema)
+    if (temaGuardado === "dark" || temaGuardado === "light") {
       document.documentElement.dataset.tema = temaGuardado;
     }
+    this.sincronizarBarra();
 
     btn.addEventListener("click", () => {
       const nuevo = this.esOscuro() ? "light" : "dark";
       document.documentElement.dataset.tema = nuevo;
       try { localStorage.setItem(Config.CLAVE_TEMA, nuevo); } catch (e) {}
       this.sincronizarBoton();
+      this.sincronizarBarra();
     });
 
     // Si no hay elección manual y el sistema cambia de tema, el estado del botón se mantiene al día
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     if (mq.addEventListener) mq.addEventListener("change", () => this.sincronizarBoton());
     this.sincronizarBoton();
-  }
+  },
+  // T48: con tema manual, la barra del navegador (theme-color) debe seguir al tema elegido, no al del sistema
+  sincronizarBarra() {
+    const manual = document.documentElement.dataset.tema;
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => {
+      if (!m.dataset.media) m.dataset.media = m.getAttribute("media") || "";
+      const esDeOscuro = m.dataset.media.includes("dark");
+      if (!manual) m.setAttribute("media", m.dataset.media);
+      else m.setAttribute("media", (manual === "dark") === esDeOscuro ? "all" : "not all");
+    });
+  },
+};
+
+/* ===== T48. Compatibilidad del <dialog> =====
+   Safari < 15.4 y navegadores viejos no tienen showModal(); sin esto el detalle nunca abría.
+   Además marca <html> mientras está abierto, porque body:has() no existe en Firefox < 121. */
+const Dialogo = {
+  abrir(dlg) {
+    if (dlg.open) return;
+    if (typeof dlg.showModal === "function") dlg.showModal();
+    else {
+      dlg.setAttribute("open", "");
+      dlg.classList.add("detalle--sin-soporte");
+    }
+    document.documentElement.classList.add("detalle-abierto");
+  },
+  cerrar(dlg) {
+    if (typeof dlg.close === "function" && typeof dlg.showModal === "function") { dlg.close(); return; }
+    if (!dlg.hasAttribute("open")) return;
+    dlg.removeAttribute("open");
+    dlg.dispatchEvent(new Event("close"));
+  },
+  conectar(dlg) {
+    dlg.addEventListener("close", () => document.documentElement.classList.remove("detalle-abierto"));
+    // Escape solo hace falta a mano cuando el navegador no tiene <dialog> nativo
+    document.addEventListener("keydown", ev => {
+      if (typeof dlg.showModal === "function") return;
+      if (ev.key !== "Escape" || !dlg.hasAttribute("open")) return;
+      const cancel = new Event("cancel", { cancelable: true });
+      if (dlg.dispatchEvent(cancel)) this.cerrar(dlg);
+    });
+  },
 };
 
 /* ===== 4. Vista: todo lo que toca el DOM ===== */
@@ -921,8 +965,9 @@ const Vista = {
       if (franja && slot.dataset.estado === "libre") FormReserva.abrir({ inicio: franja.inicio });
     });
 
-    this.$("detalleCerrar").addEventListener("click", () => dlg.close());
-    dlg.addEventListener("click", ev => { if (ev.target === dlg) dlg.close(); });
+    Dialogo.conectar(dlg);
+    this.$("detalleCerrar").addEventListener("click", () => Dialogo.cerrar(dlg));
+    dlg.addEventListener("click", ev => { if (ev.target === dlg) Dialogo.cerrar(dlg); });
     dlg.addEventListener("close", () => {
       const aviso = this.$("aviso");
       if (aviso && aviso.parentNode === dlg) document.body.appendChild(aviso);
@@ -948,7 +993,7 @@ const Vista = {
     if (!dlg.open) this._origen = origen ? { cub: origen.dataset.cub, franja: origen.dataset.franja || null } : null;
     this._detalleCub = cubId;
     this.renderDetalle();
-    if (!dlg.open) dlg.showModal();
+    Dialogo.abrir(dlg);
     Deshacer.ubicar();
   },
   renderDetalle(ahora = new Date()) {
@@ -1002,7 +1047,8 @@ const Vista = {
     this.renderAhora(ahora);
     accionreservar.renderizar();
   },
-  _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: Config.ZONA_HORARIA }),
+  // T48: hourCycle h23 en vez de hour12:false (Chrome mostraba "24:05" a medianoche)
+  _fmtHora: new Intl.DateTimeFormat(Config.LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: Config.ZONA_HORARIA }),
   _fmtFecha: new Intl.DateTimeFormat(Config.LOCALE, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: Config.ZONA_HORARIA }),
   renderReloj() {
     const ahora = new Date();
