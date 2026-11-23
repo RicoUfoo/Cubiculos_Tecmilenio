@@ -8,10 +8,30 @@
   --text-main: #0E2218;
   --text-muted: #4F645A;
   --border-color: #D0DDD5;
+  /* T44: color del anillo de foco (contraste ≥ 3:1 sobre las superficies; el mint #86E3AE sobre blanco daba 1.4:1) */
+  --focus: #0A6B3C;
+  /* T45: errores y acciones destructivas */
+  --err: #9B2C2C;
+  --err-bg: #FDF1F1;
+  --err-line: #B84A4A;
+  --danger: #9B2C2C;
+  --danger-hover: #7F2323;
+  --danger-fg: #fff;
 }
+
+/* Si la persona fuerza el tema claro, los controles nativos (listas desplegables, barras) también */
+[data-tema="light"] { color-scheme: light; }
 
 /* T43: Variables para el tema oscuro activado manualmente o por preferencia del sistema */
 [data-tema="dark"] {
+  color-scheme: dark;   /* sin esto, con el sistema en claro y el tema forzado a oscuro, las listas desplegables salían blancas */
+  --focus: #6BE19B;
+  --err: #FFA3A3;
+  --err-bg: #3A1A1C;
+  --err-line: #E58080;
+  --danger: #F28B8B;
+  --danger-hover: #F8AAAA;
+  --danger-fg: #2A0909;
   --deep: #052014;
   --on-deep: #EAF6EF;
   --on-deep-muted: #8AAEA0;
@@ -25,6 +45,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="light"]) {
+    color-scheme: dark;
+    --focus: #6BE19B;
+    --err: #FFA3A3;
+    --err-bg: #3A1A1C;
+    --err-line: #E58080;
+    --danger: #F28B8B;
+    --danger-hover: #F8AAAA;
+    --danger-fg: #2A0909;
     --deep: #052014;
     --on-deep: #EAF6EF;
     --on-deep-muted: #8AAEA0;
@@ -46,14 +74,14 @@ body {
   color: var(--text-main);
 }
 
-.hero { background: var(--deep); color: var(--on-deep); padding: 28px 16px; }
+.hero { --focus: var(--accent); background: var(--deep); color: var(--on-deep); padding: 28px 16px; }   /* T44: sobre el verde oscuro, anillo mint */
 .wrap { max-width: 1000px; margin: 0 auto; }
 .top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; }
 .eyebrow { margin: 0 0 6px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--on-deep-muted); }
 h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 .lede { margin: 12px 0 0; max-width: 480px; font-size: 17px; }
 .beneficios { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
-.beneficios li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+.beneficios li::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); font-weight: 700; }   /* T45: lo que va tras la barra es el texto alternativo (vacío): el lector no lee la marca */
 .cta { display: block; margin-top: 20px; padding: 14px 22px; text-align: center; border-radius: 10px; background: var(--on-deep); color: var(--deep); font-weight: 600; text-decoration: none; }
 .cta:hover { background: #fff; }
 .cta:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -84,7 +112,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 }
 .booth:hover { border-color: var(--accent); }
 @media (hover: hover) { .booth:hover { transform: translateY(-2px); } }
-.booth:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.booth:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .booth small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
 .booth b { font-size: 36px; line-height: 1; }
 .booth span { font-size: 13px; color: var(--text-muted); }
@@ -110,7 +138,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
   background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 8px;
 }
 .slot:hover { border-color: var(--accent); }
-.slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.slot:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 /* Franjas libres y ocupadas */
 .slot--libre { background: rgba(134, 227, 174, 0.15); border-color: var(--accent); }
@@ -144,6 +172,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 body:has(.detalle[open]) { overflow: hidden; }
 .detalle {
   --pad: 20px;
+  scroll-padding-bottom: 9rem;   /* T44: al llegar con Tab a un botón, el navegador lo desplaza por encima de la barra fija (≈125px) */
   width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh;
   margin: auto 0 0; padding: 0;
   border: none; border-radius: 16px 16px 0 0; color: var(--text-main); background: var(--card-bg);
@@ -201,7 +230,7 @@ body:has(.detalle[open]) { overflow: hidden; }
   padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; background: var(--text-main); color: var(--bg);
 }
-.agenda-item--pasado { opacity: .55; }
+.agenda-item--pasado { opacity: .72; }   /* T45: con .55 no se llegaba a contraste AA (4.5:1) */
 .agenda-item--ahora { box-shadow: 0 0 0 2px var(--text-main); }
 
 /* Botones */
@@ -217,7 +246,7 @@ body:has(.detalle[open]) { overflow: hidden; }
   border: 1.5px solid var(--deep); border-radius: 10px;
 }
 .btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
-.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .btn--sec { color: var(--text-main); background: var(--card-bg); border-color: var(--border-color); }
 .btn--sec:hover { background: var(--bg); color: var(--text-main); }
 .btn:disabled { color: var(--text-muted); background: var(--bg); border-color: var(--border-color); cursor: not-allowed; }
@@ -249,12 +278,12 @@ body:has(.detalle[open]) { overflow: hidden; }
 .agenda-tuya {
   display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--deep); background: var(--card-bg); border: 1.5px solid var(--accent);
+  color: var(--text-main); background: var(--card-bg); border: 1.5px solid var(--accent);   /* T45: antes var(--deep): en oscuro era verde casi negro sobre verde casi negro (1.08:1) */
 }
 .agenda-cancelar { grid-area: accion; width: 100%; }
 .btn--chico { min-height: 44px; padding: 8px 14px; font-size: 14px; }
-.btn--peligro { color: #fff; background: #9B2C2C; border-color: #9B2C2C; }
-.confirmar-error { margin: 14px 0 0; font-size: 14px; font-weight: 600; color: #9B2C2C; }
+.btn--peligro { color: var(--danger-fg); background: var(--danger); border-color: var(--danger); }
+.confirmar-error { margin: 14px 0 0; font-size: 14px; font-weight: 600; color: var(--err); }
 
 .aviso--accion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
 .aviso--accion[hidden] { display: none; }
@@ -289,4 +318,106 @@ body:has(.detalle[open]) { overflow: hidden; }
 @media (min-width: 720px) {
   .leyenda-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .franjas-hint { display: none; }
+}
+
+/* =====================================================================================
+   T44: OPERACIÓN COMPLETA POR TECLADO
+   ===================================================================================== */
+/* Enlace "Saltar al contenido": invisible hasta que recibe foco con Tab */
+.saltar {
+  position: absolute; left: 12px; top: -80px; z-index: 100; padding: 12px 18px; border-radius: 10px;
+  font-weight: 700; text-decoration: none; background: var(--on-deep); color: var(--deep);
+  transition: top .12s;
+}
+.saltar:focus { top: 12px; outline: 3px solid var(--accent); outline-offset: 2px; }
+/* El contenedor recibe foco por programa (tabindex="-1") al saltar: no es un control, no lleva anillo */
+.contenido:focus { outline: none; }
+/* Títulos a los que se manda el foco por programa (detalle, pasos del formulario): sí se ve dónde quedó */
+#detalleTitulo:focus-visible, .reserva-titulo:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: 6px; }
+.detalle-cerrar:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.campo input:focus-visible, .campo select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn--peligro:focus-visible { outline: 3px solid var(--err-line); outline-offset: 2px; }
+.aviso-boton:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.aviso-boton:hover { background: rgba(255, 255, 255, 0.12); }
+/* Teclas en la guía de lectura */
+kbd {
+  font: inherit; font-size: .85em; white-space: nowrap; padding: 1px 6px; border-radius: 6px;
+  background: var(--bg); border: 1.5px solid var(--border-color); border-bottom-width: 3px;
+}
+/* El botón de tema muestra también visualmente si está activo (no solo por aria-pressed) */
+.btn-tema[aria-pressed="true"] { background: rgba(255, 255, 255, 0.24); border-color: var(--on-deep); }
+
+/* =====================================================================================
+   T45: LECTORES DE PANTALLA Y ERRORES QUE NO DEPENDEN SOLO DEL COLOR
+   El ícono ("⚠", "✓") es decorativo en pantalla; para el lector, el texto alternativo dice "Error: ".
+   (La segunda declaración "content" solo la entienden los navegadores que admiten texto alternativo;
+   los demás se quedan con la primera.)
+   ===================================================================================== */
+.campo [aria-invalid="true"] { border-color: var(--err-line); background: var(--err-bg); }
+.campo .campo-error { color: var(--err); font-weight: 600; }
+.campo .campo-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+.campo select:disabled { color: var(--text-muted); background: var(--bg); }
+.confirmar-error:not(:empty) { padding: 10px 12px; background: var(--err-bg); border: 1.5px solid var(--err-line); border-radius: 10px; }
+.confirmar-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+
+/* =====================================================================================
+   RESTAURADO: reglas que existían (T10, T17, T29, T31, T36–T41) y que faltaban en este Style.css.
+   Sin ellas: el formulario y la barra "Reservar" se mostraban juntos, la pantalla de reserva confirmada perdía su
+   ícono, la leyenda perdía sus muestras y las franjas bloqueadas solo se distinguían por la opacidad.
+   Están escritas con las variables de este archivo (--card-bg, --text-main, --accent...).
+   ===================================================================================== */
+.detalle-accion[hidden] { display: none; }   /* el display:flex no debe ganarle al atributo hidden (formulario y confirmación) */
+
+/* Estado en el detalle */
+.detalle-estado[data-estado="libre"] { background: rgba(134, 227, 174, 0.15); border-color: var(--accent); }
+.detalle-estado[data-estado="ocupado"] { background: rgba(217, 139, 139, 0.2); border-color: #D98B8B; }
+
+/* Franjas: bloqueada con raya cruzada (no depende solo del color); ocupada con borde al pasar encima */
+.slot--pasada, .slot--pasada:hover {
+  background-image: linear-gradient(to top right, transparent calc(50% - 1px), var(--text-muted) 50%, transparent calc(50% + 1px));
+}
+.slot--libre.slot--pasada { background-color: rgba(134, 227, 174, 0.15); }
+.slot--ocupada:hover { border-color: var(--err-line); }
+
+/* Muestras de la leyenda */
+.ley-muestra--pasado { background: rgba(120, 120, 120, 0.15); }
+.ley-muestra--ahora { background: linear-gradient(var(--text-main), var(--text-main)) center / 2px 100% no-repeat, var(--card-bg); }
+.ley-muestra--bloqueada {
+  opacity: .5;
+  background: rgba(134, 227, 174, 0.2) linear-gradient(to top right, transparent calc(50% - 1px), var(--text-muted) 50%, transparent calc(50% + 1px));
+}
+
+/* Línea de tiempo: las marcas de las horas de los extremos no se salen de la barra; en celular solo cada 4 h */
+.lt-horas span:first-child { transform: none; }
+.lt-horas span:last-child { transform: translateX(-100%); }
+.lt-horas span:nth-child(even) { display: none; }
+@media (min-width: 480px) { .lt-horas span:nth-child(even) { display: block; } }
+
+/* Reserva confirmada (T31) y reserva recién creada */
+.exito { text-align: center; }
+.exito-icono {
+  display: inline-grid; place-items: center; width: 56px; height: 56px; margin-top: 8px;
+  font-size: 30px; font-weight: 700; color: var(--card-bg); background: var(--focus); border-radius: 50%;
+}
+.exito-codigo { font-family: ui-monospace, Menlo, monospace; letter-spacing: .05em; }
+.slot--nueva { outline: 3px solid var(--focus); outline-offset: 1px; animation: nueva-pulso 1s ease-in-out 3; }
+.agenda-item--nueva { outline: 3px solid var(--focus); outline-offset: 2px; animation: nueva-pulso 1s ease-in-out 3; }
+@keyframes nueva-pulso { 50% { outline-color: var(--accent); } }
+
+/* Aviso flotante: ícono ✓ / ⚠ (T31 / T40). El de error se distingue por el ícono y por el texto, no solo por el color */
+.aviso::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
+.aviso--accion::before { content: none; }
+.aviso-texto { min-width: 0; }
+.aviso--accion .aviso-texto::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
+.aviso--error .aviso-texto::before { content: "⚠ "; content: "⚠ " / "Error: "; color: #F6D5D5; }
+
+/* Acción destructiva (T37) */
+.btn--peligro:hover { color: var(--danger-fg); background: var(--danger-hover); border-color: var(--danger-hover); }
+
+/* Entrada del detalle y movimiento reducido */
+.detalle[open] { animation: detalle-entra .18s ease-out; }
+@keyframes detalle-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .booth, .aviso, .saltar { transition: none; }
+  .detalle[open], .slot--nueva, .agenda-item--nueva { animation: none; }
 }
