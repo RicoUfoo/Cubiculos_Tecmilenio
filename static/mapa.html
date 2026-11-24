@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Mapa explorable · Sala de estudio</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: #0B1611; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  .barra-volver { flex: none; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: #07301F; }
+  .barra-volver a { color: #EAF6EF; font-weight: 600; }
+  .barra-volver a:focus-visible { outline: 3px solid #86E3AE; outline-offset: 2px; }
+  #app { flex: 1; min-height: 0; }
+</style>
+</head>
+<body>
+<nav class="barra-volver"><a href="index.html">&larr; Volver al portal</a><a href="cubiculos.html">Ver cubículos</a></nav>
+<div id="app"></div>
+<script src="mapa.js"></script>
+</body>
+</html>

@@ -423,3 +423,8 @@ kbd {
   .booth, .aviso, .saltar { transition: none; }
   .detalle[open], .slot--nueva, .agenda-item--nueva { animation: none; }
 }
+
+/* Barra para volver al portal (cubiculos.html) */
+.barra-volver { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: var(--deep); }
+.barra-volver a { color: var(--on-deep); font-weight: 600; }
+.barra-volver a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

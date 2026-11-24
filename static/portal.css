@@ -1,0 +1,51 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", Arial, sans-serif; background: #f2f5fb; color: #1d1b4f; }
+
+  /* Barra superior */
+  .topbar { background: #0b4f4a; color: #fff; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; }
+  .topbar .left, .topbar .right { display: flex; align-items: center; gap: 18px; }
+  .logo { width: 34px; height: 34px; border-radius: 8px; background: #fff; color: #0b4f4a; font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+  .greet { position: absolute; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 600; }
+  .badge { position: relative; }
+  .badge span { position: absolute; top: -8px; right: -10px; background: #d93025; color: #fff; font-size: 11px; border-radius: 50%; width: 18px; height: 18px; display: grid; place-items: center; }
+  .icon { width: 22px; height: 22px; stroke: #fff; fill: none; stroke-width: 2; }
+
+  /* Hero y favoritos */
+  .hero { background: linear-gradient(120deg, #0b4f4a 0%, #1f7a6d 55%, #5fb3a4 100%); height: 240px; position: relative; }
+  .favs-head { position: absolute; top: 30px; left: 0; right: 0; width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; color: #fff; }
+  .favs-head h2 { font-size: 26px; }
+  .btn-dark { background: #2b1f6b; color: #fff; border: 0; padding: 12px 18px; border-radius: 3px; font-weight: 600; font-size: 15px; }
+  .favs-box { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); width: 935px; height: 190px; background: #fff; display: flex; align-items: center; padding: 0 40px; }
+  .favs-box .item { width: 220px; text-align: center; color: #2b1f6b; font-weight: 700; font-size: 16px; }
+  .favs-box .mark { flex: 1; display: flex; justify-content: flex-end; }
+
+  /* Secciones */
+  .wrap { width: 1000px; margin: 0 auto; }
+  .news-title, .services-title { font-size: 22px; color: #2b1f6b; font-weight: 700; margin: 28px 0 14px; }
+  .carousel { height: 300px; background: #0b4f4a; display: flex; overflow: hidden; border-radius: 4px; }
+  .slide { flex: 1; padding: 36px 40px; color: #fff; display: flex; flex-direction: column; justify-content: flex-end; background: linear-gradient(135deg, #1f7a6d, #0b4f4a); }
+  .slide + .slide { background: linear-gradient(135deg, #2c8c7c, #134f48); border-left: 2px solid #f2f5fb; }
+  .slide h3 { font-size: 22px; margin-bottom: 8px; }
+  .slide p { font-size: 14px; opacity: .9; }
+  .services { display: flex; gap: 24px; }
+  .service { flex: 1; background: #0b4f4a; color: #fff; padding: 22px 26px; border-radius: 4px; }
+  .service.alt { background: #1f7a6d; }
+  .service h4 { font-size: 22px; }
+  .service small { font-size: 14px; opacity: .9; }
+
+  .section { width: 1000px; margin: 40px auto 0; }
+  .section h2 { font-size: 22px; color: #1d1b4f; }
+  .section p.desc { font-size: 15px; color: #333; margin: 6px 0 18px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+  .card { background: #fff; height: 220px; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #1d1b4f; font-weight: 700; font-size: 17px; gap: 14px; }
+  .card .ico { width: 110px; height: 110px; border-radius: 14px; background: #e8efff; display: grid; place-items: center; color: #2b1f6b; font-size: 40px; }
+  .card.reservas { border: 2px solid #0b4f4a; }
+  .card.reservas .ico { background: #0b4f4a; color: #fff; }
+  .card .tag { font-size: 12px; font-weight: 600; background: #d6f3ec; color: #0b4f4a; padding: 3px 10px; border-radius: 12px; }
+  .ver-mas { text-align: right; color: #0b4f4a; font-size: 15px; margin-top: -4px; margin-bottom: 4px; }
+  .spacer { height: 60px; }
+
+/* Enlace de la tarjeta Reservas (es un <a>) */
+a.card { text-decoration: none; }
+a.card:hover, a.card:focus-visible { box-shadow: 0 4px 14px rgba(11,79,74,.25); outline: none; }
+a.card:focus-visible { outline: 3px solid #0b4f4a; outline-offset: 3px; }
