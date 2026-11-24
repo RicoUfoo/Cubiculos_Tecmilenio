@@ -1,0 +1,425 @@
+:root {
+  --deep: #07301F;
+  --on-deep: #EAF6EF;
+  --on-deep-muted: #A5CDB7;
+  --accent: #86E3AE;
+  --bg: #EDF3EF;
+  --card-bg: #FFFFFF;
+  --text-main: #0E2218;
+  --text-muted: #4F645A;
+  --border-color: #D0DDD5;
+  /* T44: color del anillo de foco (contraste >= 3:1 sobre las superficies; el mint #86E3AE sobre blanco daba 1.4:1) */
+  --focus: #0A6B3C;
+  --libre-bg: #E3F4EA;
+  --libre-borde: #7FCBA0;
+  --ocupado-bg: #F6D5D5;
+  --peligro: #9B2C2C;
+  --peligro-hover: #7F2323;
+  --peligro-texto: #9B2C2C;
+  --peligro-bg: #FDF1F1;
+  --peligro-borde: #B84A4A;
+  --exito: #0A7A45;
+  /* T48: que los controles nativos (select, spinners, scrollbars) sigan al tema */
+  color-scheme: light dark;
+}
+[data-tema="light"] { color-scheme: light; }
+
+/* Si la persona fuerza el tema claro, los controles nativos (listas desplegables, barras) también */
+[data-tema="light"] { color-scheme: light; }
+
+/* T43: Variables para el tema oscuro activado manualmente o por preferencia del sistema */
+[data-tema="dark"] {
+  color-scheme: dark;   /* sin esto, con el sistema en claro y el tema forzado a oscuro, las listas desplegables salian blancas */
+  --focus: #6BE19B;
+  --libre-bg: rgba(107, 225, 155, 0.16);
+  --libre-borde: #3F9D68;
+  --ocupado-bg: rgba(217, 139, 139, 0.22);
+  --peligro-texto: #F4A6A6;
+  --peligro-bg: rgba(184, 74, 74, 0.18);
+  --peligro-borde: #D97C7C;
+  --exito: #2E9E63;
+  --deep: #052014;
+  --on-deep: #EAF6EF;
+  --on-deep-muted: #8AAEA0;
+  --accent: #6BE19B;
+  --bg: #0B1611;
+  --card-bg: #13261D;
+  --text-main: #EAF6EF;
+  --text-muted: #A0B8AD;
+  --border-color: #234435;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="light"]) {
+    color-scheme: dark;
+    --focus: #6BE19B;
+    --libre-bg: rgba(107, 225, 155, 0.16);
+    --libre-borde: #3F9D68;
+    --ocupado-bg: rgba(217, 139, 139, 0.22);
+    --peligro-texto: #F4A6A6;
+    --peligro-bg: rgba(184, 74, 74, 0.18);
+    --peligro-borde: #D97C7C;
+    --exito: #2E9E63;
+    --deep: #052014;
+    --on-deep: #EAF6EF;
+    --on-deep-muted: #8AAEA0;
+    --accent: #6BE19B;
+    --bg: #0B1611;
+    --card-bg: #13261D;
+    --text-main: #EAF6EF;
+    --text-muted: #A0B8AD;
+    --border-color: #234435;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text-main);
+}
+
+.hero { --focus: var(--accent); background: var(--deep); color: var(--on-deep); padding: 28px 16px; }   /* T44: sobre el verde oscuro, anillo mint */
+.wrap { max-width: 1000px; margin: 0 auto; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; }
+.eyebrow { margin: 0 0 6px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--on-deep-muted); }
+h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
+.lede { margin: 12px 0 0; max-width: 480px; font-size: 17px; }
+.beneficios { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.beneficios li::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); font-weight: 700; }   /* T45: lo que va tras la barra es el texto alternativo (vacío): el lector no lee la marca */
+.cta { display: block; margin-top: 20px; padding: 14px 22px; text-align: center; border-radius: 10px; background: var(--on-deep); color: var(--deep); font-weight: 600; text-decoration: none; }
+.cta:hover { background: #fff; }
+.cta:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* Reloj y botón de tema */
+.clock-and-theme { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.btn-tema {
+  -webkit-appearance: none; appearance: none; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 14px; background: rgba(255, 255, 255, 0.1); color: var(--on-deep);
+  border: 1.5px solid var(--on-deep-muted); border-radius: 8px; display: flex; align-items: center; gap: 6px;
+}
+.btn-tema:hover { background: rgba(255, 255, 255, 0.2); }
+.btn-tema:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.clock { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.clock-time { font-family: ui-monospace, Menlo, monospace; font-size: 34px; }
+.clock-date { font-size: 13px; color: var(--on-deep-muted); }
+.contenido { max-width: 1000px; margin: 0 auto; padding: 28px 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Plano de cubículos */
+.booths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.booth:nth-child(5) { grid-column: span 2; }
+.booth {
+  -webkit-appearance: none; appearance: none; font: inherit; color: var(--text-main); cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 4px; padding: 14px;
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 14px;
+  transition: border-color .15s, transform .15s;
+}
+.booth:hover { border-color: var(--accent); }
+@media (hover: hover) { .booth:hover { transform: translateY(-2px); } }
+.booth:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.booth small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+.booth b { font-size: 36px; line-height: 1; }
+.booth span { font-size: 13px; color: var(--text-muted); }
+.door { margin-top: 18px; display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+.door::before, .door::after { content: ""; flex: 1; border-top: 2px dashed var(--border-color); }
+
+/* Cuadrícula de franjas */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.franjas-sec { margin-top: 32px; }
+.franjas-info { margin: 4px 0 16px; font-size: 14px; color: var(--text-muted); }
+.franjas-hint { margin: -8px 0 12px; font-size: 13px; color: var(--text-muted); }
+.tabla-wrap {
+  overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  border: 1.5px solid var(--border-color); border-radius: 14px; background: var(--card-bg);
+}
+.tabla-franjas { border-collapse: separate; border-spacing: 4px; width: 100%; }
+.tabla-franjas th { font-size: 12px; font-weight: 600; color: var(--text-muted); text-align: center; padding: 6px 2px; }
+.tabla-franjas thead th:first-child, .tabla-franjas tbody th { text-align: left; padding-left: 10px; white-space: nowrap; position: -webkit-sticky; position: sticky; left: 0; background: var(--card-bg); }
+.tabla-franjas tbody th { font-size: 13px; color: var(--text-main); }
+.tabla-franjas td { padding: 0; }
+.slot {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 44px; height: 44px; cursor: pointer;
+  background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 8px;
+}
+.slot:hover { border-color: var(--accent); }
+.slot:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Franjas libres y ocupadas */
+.slot--libre { background: rgba(134, 227, 174, 0.15); border-color: var(--accent); }
+.slot--libre:hover { background: rgba(134, 227, 174, 0.3); border-color: var(--accent); }
+.slot--ocupada {
+  background: repeating-linear-gradient(45deg, rgba(217, 139, 139, 0.2) 0 4px, rgba(217, 139, 139, 0.4) 4px 8px);
+  border-color: #D98B8B;
+  cursor: not-allowed;
+}
+
+.booth .estado-actual { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--text-main); }
+.booth .lt-slot { display: block; margin-top: 10px; }
+.linea-tiempo { display: block; }
+.lt-pista {
+  position: relative; display: block; height: 10px; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--border-color); border-radius: 999px;
+}
+.lt-pasado { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(120, 120, 120, 0.15); }
+.lt-bloque {
+  position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(45deg, #E9A9A9 0 3px, #D98B8B 3px 6px);
+}
+.lt-ahora { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text-main); }
+.linea-tiempo .lt-resumen { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+.linea-tiempo--grande .lt-pista { height: 24px; border-radius: 8px; }
+.lt-horas { position: relative; display: block; height: 16px; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+.lt-horas span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.tabla-franjas thead th:first-child, .tabla-franjas tbody th { z-index: 2; box-shadow: -4px 0 0 var(--card-bg), 4px 0 0 var(--card-bg); }
+
+/* Panel de detalle */
+/* T48: :has() no existe en Firefox < 121 ni Safari < 15.4; la clase la pone Script.js */
+body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
+.detalle {
+  --pad: 20px;
+  scroll-padding-bottom: 9rem;   /* T44: al llegar con Tab a un botón, el navegador lo desplaza por encima de la barra fija (≈125px) */
+  width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh;
+  margin: auto 0 0; padding: 0;
+  border: none; border-radius: 16px 16px 0 0; color: var(--text-main); background: var(--card-bg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.detalle::backdrop { background: rgba(0, 0, 0, 0.55); }
+/* T48: navegadores sin <dialog> (Safari < 15.4): el JS lo abre con [open] y esto lo hace flotar */
+.detalle:not([open]) { display: none; }
+.detalle--sin-soporte[open] {
+  display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; overflow-y: auto;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.55);
+}
+.detalle-caja { padding: var(--pad); }
+.detalle-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.detalle-eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+.detalle h2 { margin: 0; font-size: 24px; line-height: 1.1; }
+.detalle-cerrar {
+  -webkit-appearance: none; appearance: none; flex: none; width: 44px; height: 44px; cursor: pointer;
+  font-size: 24px; line-height: 1; color: var(--text-main);
+  background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 10px;
+}
+.detalle-cerrar:hover { border-color: var(--accent); }
+.detalle-cerrar:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.detalle-dato { margin: 12px 0 0; font-size: 14px; color: var(--text-muted); }
+.detalle-estado {
+  display: inline-block; margin: 14px 0 0; padding: 6px 12px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; background: var(--bg); border: 1.5px solid var(--border-color);
+}
+.detalle-estado[data-estado="libre"] { background: var(--libre-bg); border-color: var(--libre-borde); }
+.detalle-estado[data-estado="ocupado"] { background: var(--ocupado-bg); border-color: #D98B8B; }
+.detalle-sub { margin: 22px 0 10px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+
+/* Leyenda */
+.leyenda { margin-top: 24px; padding: 16px; background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 14px; }
+.leyenda-cols { display: grid; grid-template-columns: 1fr; gap: 20px 32px; }
+.leyenda h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.leyenda-lista { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.leyenda-lista li { display: flex; align-items: center; gap: 10px; }
+.leyenda-guia { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--text-main); }
+.ley-muestra { flex: none; width: 36px; height: 18px; border: 1.5px solid var(--border-color); border-radius: 6px; }
+.ley-muestra--libre { background: rgba(134, 227, 174, 0.2); border-color: var(--accent); }
+.ley-muestra--ocupada { background: repeating-linear-gradient(45deg, #F6D5D5 0 4px, #EFBFBF 4px 8px); border-color: #D98B8B; }
+.ley-muestra--pasado { background: rgba(120, 120, 120, 0.15); }
+.ley-muestra--ahora { background: linear-gradient(var(--text-main), var(--text-main)) center / 2px 100% no-repeat, var(--card-bg); }
+.ley-muestra--bloqueada {
+  opacity: .5; background: var(--libre-bg) linear-gradient(to top right, transparent calc(50% - 1px), var(--text-muted) 50%, transparent calc(50% + 1px));
+}
+
+/* Ficha del detalle */
+.detalle-ficha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0 0; }
+.detalle-ficha div { padding: 10px 12px; background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 10px; }
+.detalle-ficha dt { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+.detalle-ficha dd { margin: 4px 0 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Agenda */
+.agenda { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.agenda-item {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px;
+  grid-template-areas: "hora ahora" "que que" "accion accion";
+  padding: 10px 12px; font-size: 14px;
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-left-width: 6px; border-radius: 10px;
+}
+.agenda-item--libre { border-color: var(--accent); }
+.agenda-item--ocupado { border-color: #D98B8B; }
+.agenda-hora { grid-area: hora; font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: nowrap; }
+.agenda-que { grid-area: que; min-width: 0; overflow-wrap: anywhere; }
+.agenda-ahora {
+  grid-area: ahora;
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; background: var(--text-main); color: var(--bg);
+}
+.agenda-item--pasado { opacity: .72; }   /* T45: con .55 no se llegaba a contraste AA (4.5:1) */
+.agenda-item--ahora { box-shadow: 0 0 0 2px var(--text-main); }
+
+/* Botones */
+.detalle-accion {
+  position: sticky; bottom: 0; margin: 20px calc(var(--pad) * -1) calc(var(--pad) * -1);
+  padding: 14px var(--pad); padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--card-bg); border-top: 1.5px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;
+}
+/* T49: display:flex le ganaba a [hidden] y la barra se veía encima del formulario y la confirmación */
+.detalle-accion[hidden] { display: none; }
+.detalle-accion .btn { width: 100%; }
+.btn {
+  -webkit-appearance: none; appearance: none; font: inherit; font-weight: 600; cursor: pointer;
+  min-height: 44px; padding: 12px 22px; color: var(--on-deep); background: var(--deep); touch-action: manipulation;
+  border: 1.5px solid var(--deep); border-radius: 10px;
+}
+.btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn--sec { color: var(--text-main); background: var(--card-bg); border-color: var(--border-color); }
+.btn--sec:hover { background: var(--bg); color: var(--text-main); }
+.btn:disabled { color: var(--text-muted); background: var(--bg); border-color: var(--border-color); cursor: not-allowed; }
+
+/* Formulario */
+.reserva-titulo { margin: 18px 0 4px; font-size: 20px; }
+.campo { margin-top: 16px; }
+.campo label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+.campo input, .campo select {
+  width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text-main);
+  background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 10px;
+}
+.campo input:focus-visible, .campo select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.campo select:disabled { color: var(--text-muted); background: var(--bg); }
+.campo small { display: block; margin-top: 6px; font-size: 13px; color: var(--text-muted); }
+/* T49: estilos de error recuperados (borde + ícono + texto, no solo color) */
+.campo [aria-invalid="true"] { border-color: var(--peligro-borde); background: var(--peligro-bg); }
+.campo .campo-error { color: var(--peligro-texto); font-weight: 600; }
+.campo .campo-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+.campos-fila { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
+.detalle-ficha .ancho { grid-column: span 2; }
+.reserva-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.reserva-botones .btn { width: 100%; }
+
+/* Franjas pasadas / avisos */
+.slot--pasada, .slot--pasada:hover {
+  opacity: .4; cursor: not-allowed; border-color: var(--border-color);
+  background-image: linear-gradient(to top right, transparent calc(50% - 1px), var(--text-muted) 50%, transparent calc(50% + 1px));
+}
+.slot--libre.slot--pasada { background-color: var(--libre-bg); }
+
+/* T49: retroalimentación de reserva (T31) recuperada */
+.exito { text-align: center; }
+.exito-icono {
+  display: inline-grid; place-items: center; width: 56px; height: 56px; margin-top: 8px;
+  font-size: 30px; font-weight: 700; color: #EAF6EF; background: var(--exito); border-radius: 50%;
+}
+.exito-codigo { font-family: ui-monospace, Menlo, monospace; letter-spacing: .05em; }
+.slot--nueva { outline: 3px solid var(--exito); outline-offset: 1px; animation: nueva-pulso 1s ease-in-out 3; }
+.agenda-item--nueva { outline: 3px solid var(--exito); outline-offset: 2px; animation: nueva-pulso 1s ease-in-out 3; }
+@keyframes nueva-pulso { 50% { outline-color: var(--accent); } }
+.aviso {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 10; transform: translate(-50%, 20px);
+  width: max-content; max-width: calc(100% - 32px); padding: 14px 20px; border-radius: 12px;
+  font-size: 15px; font-weight: 600; color: var(--on-deep); background: var(--deep);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); opacity: 0; transition: opacity .2s, transform .2s;
+}
+.aviso--visible { opacity: 1; transform: translate(-50%, 0); }
+
+.agenda-tuya {
+  display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-main); background: var(--card-bg); border: 1.5px solid var(--accent);   /* T45: antes var(--deep): en oscuro era verde casi negro sobre verde casi negro (1.08:1) */
+}
+.agenda-cancelar { grid-area: accion; width: 100%; }
+.btn--chico { min-height: 44px; padding: 8px 14px; font-size: 14px; }
+.btn--peligro { color: #fff; background: var(--peligro); border-color: var(--peligro); }
+/* T49: sin esto heredaba .btn:hover y el boton destructivo se volvia verde */
+.btn--peligro:hover { color: #fff; background: var(--peligro-hover); border-color: var(--peligro-hover); }
+.btn--peligro:focus-visible { outline: 3px solid var(--peligro-borde); outline-offset: 2px; }
+.confirmar-error { margin: 14px 0 0; font-size: 14px; font-weight: 600; color: var(--peligro-texto); }
+.confirmar-error:not(:empty) {
+  padding: 10px 12px; background: var(--peligro-bg); border: 1.5px solid var(--peligro-borde); border-radius: 10px;
+}
+.confirmar-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+
+.aviso--accion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.aviso--accion[hidden] { display: none; }
+.aviso-texto { min-width: 0; }
+.aviso--accion .aviso-texto::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
+.aviso--error .aviso-texto::before { content: "⚠ "; content: "⚠ " / "Error: "; color: #F6D5D5; }
+.aviso-boton {
+  -webkit-appearance: none; appearance: none; font: inherit; font-weight: 700; cursor: pointer;
+  min-height: 44px; padding: 8px 18px; color: var(--accent); background: transparent;
+  border: 1.5px solid var(--accent); border-radius: 10px; touch-action: manipulation;
+}
+.aviso-boton:hover { background: rgba(134, 227, 174, .15); }
+.aviso-boton:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+@media (min-width: 480px) {
+  .campos-fila { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reserva-botones { flex-direction: row; justify-content: flex-end; }
+  .reserva-botones .btn { width: auto; }
+  .agenda-item {
+    grid-template-columns: auto 1fr auto; align-items: center; gap: 6px 12px;
+    grid-template-areas: "hora que ahora" "accion accion accion";
+  }
+  .agenda-cancelar { width: auto; justify-self: start; }
+}
+@media (min-width: 640px) {
+  .hero { padding: 40px 20px; }
+  .contenido { padding: 40px 20px; }
+  .booths { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  .booth:nth-child(-n+3) { grid-column: span 2; }
+  .booth:nth-child(n+4) { grid-column: span 3; }
+  .detalle {
+    --pad: 24px;
+    width: min(560px, calc(100% - 32px)); max-height: calc(100vh - 48px);
+    margin: auto; border-radius: 16px;
+  }
+  .detalle--sin-soporte[open] { top: 24px; bottom: auto; margin: 0 auto; }
+}
+@media (min-width: 720px) {
+  .leyenda-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .franjas-hint { display: none; }
+}
+
+/* =====================================================================================
+   T44: OPERACION COMPLETA POR TECLADO
+   ===================================================================================== */
+/* Enlace "Saltar al contenido": invisible hasta que recibe foco con Tab */
+.saltar {
+  position: absolute; left: 12px; top: -80px; z-index: 100; padding: 12px 18px; border-radius: 10px;
+  font-weight: 700; text-decoration: none; background: var(--on-deep); color: var(--deep);
+  transition: top .12s;
+}
+.saltar:focus { top: 12px; outline: 3px solid var(--accent); outline-offset: 2px; }
+/* El contenedor recibe foco por programa (tabindex="-1") al saltar: no es un control, no lleva anillo */
+.contenido:focus { outline: none; }
+/* Titulos a los que se manda el foco por programa (detalle, pasos del formulario): si se ve donde quedo */
+#detalleTitulo:focus-visible, .reserva-titulo:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: 6px; }
+/* Teclas en la guia de lectura */
+kbd {
+  font: inherit; font-size: .85em; white-space: nowrap; padding: 1px 6px; border-radius: 6px;
+  background: var(--bg); border: 1.5px solid var(--border-color); border-bottom-width: 3px;
+}
+/* El boton de tema muestra tambien visualmente si esta activo (no solo por aria-pressed) */
+.btn-tema[aria-pressed="true"] { background: rgba(255, 255, 255, 0.24); border-color: var(--on-deep); }
+
+/* Franjas: borde al pasar encima cuando esta ocupada */
+.slot--ocupada:hover { border-color: var(--peligro-borde); }
+
+/* Linea de tiempo: las marcas de las horas de los extremos no se salen de la barra; en celular solo cada 4 h */
+.lt-horas span:first-child { transform: none; }
+.lt-horas span:last-child { transform: translateX(-100%); }
+.lt-horas span:nth-child(even) { display: none; }
+@media (min-width: 480px) { .lt-horas span:nth-child(even) { display: block; } }
+
+/* Aviso flotante: icono check (T31). Decorativo en pantalla; el texto alternativo lo da cada variante */
+.aviso::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
+.aviso--accion::before { content: none; }
+
+/* Entrada del detalle y movimiento reducido */
+.detalle[open] { animation: detalle-entra .18s ease-out; }
+@keyframes detalle-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .booth, .aviso, .saltar { transition: none; }
+  .detalle[open], .slot--nueva, .agenda-item--nueva { animation: none; }
+}
