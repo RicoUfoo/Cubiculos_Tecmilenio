@@ -66,6 +66,8 @@ const MUNDO_TECMILENIO = {
   // La entrada ahora es una puerta real: separa el lobby (y < limiteLobby) del patio nuevo (y > limiteLobby)
   limiteLobby: 22,
   puertaPatio: { x: 15, ancho: 2 },
+  // Gimnasio a la derecha de la planta baja (plano en px, 29 px = 1 unidad). Solo ocupa y < limiteLobby.
+  gimnasio: { x0: 32, x1: 62.8, y1: 21.7, ox: 32.2, s: 29, puertaLobby: [13, 15], subY0: 8.8, subX1: 37.65, puertaSub: [9.8, 11.7] },
   // Fin del patio (los enemigos del patio no pasan de aquí) y muro que lo separa del coliseo
   patioFin: 33.2,
   separador: { y: 34, gapX: 27, gapAncho: 2 },
@@ -566,7 +568,7 @@ function montar(raiz, opciones = {}) {
   raiz.innerHTML = `
     <canvas class="ee-lienzo" tabindex="0" role="application" aria-label="Mapa de la sala. Muévete con las flechas o WASD. Pulsa E para ver el espacio cercano. También puedes usar la lista de espacios."></canvas>
     <header class="ee-hud">
-      <div class="ee-marca"><p class="ee-eyebrow">${esc(cfg.titulo)}</p><h1>${esc(cfg.subtitulo)}</h1></div>
+      <div class="ee-marca"><p class="ee-eyebrow" data-r="zona">${esc(cfg.titulo)}</p><h1>${esc(cfg.subtitulo)}</h1></div>
       <div class="ee-vida-fila">
       <div class="ee-tp" data-r="tpCaja" hidden title="Teletransporte (R)"><span class="ee-tp-num" data-r="tpNum"></span></div>
       <div class="ee-vida" data-r="vidaCaja" role="group" aria-label="Energía del personaje">
@@ -606,7 +608,8 @@ function montar(raiz, opciones = {}) {
     <dialog class="ee-dlg" data-r="dlgAyuda" aria-labelledby="eeAyTit"></dialog>
     <dialog class="ee-dlg" data-r="dlgNPC" aria-labelledby="eeNpcTit"></dialog>
     <dialog class="ee-dlg" data-r="dlgJP" aria-labelledby="eeJpTit"></dialog>
-    <dialog class="ee-dlg" data-r="dlgInv" aria-labelledby="eeInvTit"></dialog>`;
+    <dialog class="ee-dlg" data-r="dlgInv" aria-labelledby="eeInvTit"></dialog>
+    <dialog class="ee-dlg" data-r="dlgGym" aria-labelledby="eeGymTit"></dialog>`;
   const $ = s => raiz.querySelector(`[data-r="${s}"]`);
   const lienzo = raiz.querySelector(".ee-lienzo"), c = lienzo.getContext("2d");
   const barraJefe = document.createElement("div");
@@ -616,7 +619,7 @@ function montar(raiz, opciones = {}) {
   const jefeRelleno = barraJefe.querySelector(".ee-jefe-relleno");
   const el = { hora: $("hora"), fecha: $("fecha"), abierto: $("abierto"), pista: $("pista"), aviso: $("aviso"), sr: $("sr"), joy: $("joy"),
     panel: $("panel"), pEyebrow: $("pEyebrow"), pTitulo: $("pTitulo"), pInfo: $("pInfo"), pAccion: $("pAccion"),
-    dlgAvatar: $("dlgAvatar"), dlgLista: $("dlgLista"), dlgAyuda: $("dlgAyuda"), dlgNPC: $("dlgNPC"), dlgJP: $("dlgJP"), dlgInv: $("dlgInv"),
+    dlgAvatar: $("dlgAvatar"), dlgLista: $("dlgLista"), dlgAyuda: $("dlgAyuda"), dlgNPC: $("dlgNPC"), dlgJP: $("dlgJP"), dlgInv: $("dlgInv"), dlgGym: $("dlgGym"), zona: $("zona"),
     vidaCaja: $("vidaCaja"), vidaFill: $("vidaFill"), vidaTexto: $("vidaTexto"),
     armaCaja: $("armaCaja"), armaMarcador: $("armaMarcador"), btnDisparar: $("btnDisparar"), volMusica: $("volMusica"), volSfx: $("volSfx") };
 
@@ -690,6 +693,21 @@ function montar(raiz, opciones = {}) {
   TIENDA_MERMA.ancla = [TIENDA_MERMA.x, TIENDA_MERMA.y + 1.0];
   TIENDA_MERMA.hit = [TIENDA_MERMA.x - 0.9, TIENDA_MERMA.y - 0.8, TIENDA_MERMA.x + 0.9, TIENDA_MERMA.y + 0.8];
   TIENDA_MERMA.alHablar = () => abrirMerma();
+  // NPC del gimnasio: su diálogo está en la lista `dialogo` (cámbiala cuando quieras; cada texto es una línea)
+  const NPC_GYM = {
+    id: "npc-gimnasio", nombre: "Entrenador del gimnasio",
+    x: 32.2 + 430 / 29, y: 224 / 29,
+    dialogo: [
+      "¡Bienvenido al gimnasio!",
+      "Las máquinas están libres, úsalas con calma y limpia lo que uses.",
+      "Si necesitas algo, aquí me encuentras.",
+    ],
+    apariencia: { nombre: "Entrenador", piel: PIEL[1], pelo: PELO[1], peinado: "corto", ropa: "#c2410c", pantalon: "#1f2937", accesorio: "gorra", mochila: false },
+  };
+  NPC_GYM.ancla = [NPC_GYM.x, NPC_GYM.y + 1.1];
+  NPC_GYM.zona = [NPC_GYM.x - 2.6, NPC_GYM.y - 2.4, NPC_GYM.x + 2.6, NPC_GYM.y + 2.8];
+  NPC_GYM.hit = [NPC_GYM.x - 1.2, NPC_GYM.y - 1.2, NPC_GYM.x + 1.2, NPC_GYM.y + 1.2];
+  NPC_GYM.alHablar = () => abrirGym();
 
   function actualizarEquipo() {
     if (el.armaCaja) el.armaCaja.hidden = !tienePistola;
@@ -731,6 +749,15 @@ function montar(raiz, opciones = {}) {
         <button type="button" class="ee-btn" data-a="invocarJefe" ${hayJefeActivo ? "disabled" : ""}>Usar el invocador</button>
         <button type="button" class="ee-btn ee-btn--sec" data-a="cerrarDlg">Cerrar</button>
       </div>
+    </div>`;
+    abrirDlg(dlg);
+  }
+  function abrirGym() {
+    const dlg = el.dlgGym;
+    dlg.innerHTML = `<div class="ee-dlg-caja">
+      <div class="ee-dlg-cab"><h2 id="eeGymTit">${esc(NPC_GYM.nombre)}</h2><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
+      ${NPC_GYM.dialogo.map(t => `<p class="ee-nota">${esc(t)}</p>`).join("")}
+      <div class="ee-fila-botones"><button type="button" class="ee-btn ee-btn--sec" data-a="cerrarDlg">Cerrar</button></div>
     </div>`;
     abrirDlg(dlg);
   }
@@ -2230,6 +2257,7 @@ function montar(raiz, opciones = {}) {
     // Escaleras chicas en el salón de abajo a la derecha que bajan a Mensajería Hora Vive
     const emsg = RECT(27.9, 31.6, 29.6, 33.0);
     escaleras(emsg[0], emsg[1], emsg[2] - emsg[0], emsg[3] - emsg[1]);
+    construirGimnasio();
     construirSalaEstudio();
     construirSotano2();
   }
@@ -2407,6 +2435,46 @@ function montar(raiz, opciones = {}) {
     }
   }
 
+  /* ----- Gimnasio: a la derecha de la planta baja, con sala pequeña de acceso y equipos del plano ----- */
+  function construirGimnasio() {
+    const g = mundo.gimnasio; if (!g) return;
+    const gx = px => g.ox + px / g.s, gy = py => py / g.s;
+    const muro = (x0, y0, x1, y1, h = 2.7) => { agregar((x0 + x1) / 2, (y0 + y1) / 2, h, () => caja(x0, y0, x1 - x0, y1 - y0, 0, h, "#e8ece9")); solidos.push([x0, y0, x1, y1]); };
+    decals.push(() => rectPiso(g.x0, 0, g.x1 - g.x0, g.y1, "#d9dfd8", PAL.junta, 1));
+    muro(g.x0, -0.25, g.x1, 0, 2.7);
+    muro(g.x1 - 0.2, 0, g.x1, g.y1);
+    muro(g.x0, 0, g.x0 + 0.2, g.puertaLobby[0]); muro(g.x0, g.puertaLobby[1], g.x0 + 0.2, g.y1);
+    muro(g.x0, g.subY0, g.subX1, g.subY0 + 0.2);
+    muro(g.subX1 - 0.2, g.subY0, g.subX1, g.puertaSub[0]); muro(g.subX1 - 0.2, g.puertaSub[1], g.subX1, g.y1);
+    const eq = (px0, py0, px1, py1, h, col, nombre) => {
+      const x0 = gx(px0), y0 = gy(py0), x1 = gx(px1), y1 = gy(py1);
+      solidos.push([x0, y0, x1, y1]);
+      agregar((x0 + x1) / 2, (y0 + y1) / 2, h, () => caja(x0, y0, x1 - x0, y1 - y0, 0, h, col));
+      if (nombre) decals.push(() => { const [lx, ly] = P((x0 + x1) / 2, y1 + 0.5, 0); c.font = "600 10px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#1d2a22"; c.fillText(nombre, lx, ly); });
+    };
+    eq(670, 40, 766, 118, 1.6, "#4f6b5c", "Máquina de espalda");
+    eq(38, 127, 104, 191, 1.8, "#5c6b7a", "Máquina Smith");
+    eq(450, 202, 476, 248, 1.0, "#8d7f6a", "");
+    eq(546, 309, 560, 492, 1.4, "#6b5b4d", "");
+    eq(426, 352, 461, 384, 0.9, "#3f5e8a", "Banca de gym");
+    eq(428, 432, 460, 464, 0.9, "#3f5e8a", "Banca de gym");
+    eq(614, 349, 648, 381, 0.9, "#3f5e8a", "Banca de gym");
+    eq(617, 432, 650, 464, 0.9, "#3f5e8a", "Banca de gym");
+    eq(166, 350, 220, 405, 1.2, "#7a7a6a", "");
+    eq(166, 505, 220, 560, 1.2, "#7a7a6a", "");
+    eq(338, 603, 506, 622, 1.0, "#8c8c94", "");
+    eq(633, 603, 800, 622, 1.0, "#8c8c94", "");
+    // NPC del gimnasio (el que da diálogo)
+    solidos.push([NPC_GYM.x - 0.3, NPC_GYM.y - 0.3, NPC_GYM.x + 0.3, NPC_GYM.y + 0.3]);
+    agregar(NPC_GYM.x, NPC_GYM.y, 1.9, () => {
+      const [px, py] = P(NPC_GYM.x, NPC_GYM.y, 0);
+      dibujarAvatar(c, NPC_GYM.apariencia, { x: px, y: py, dir: "down" });
+      c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+      const w = c.measureText(NPC_GYM.apariencia.nombre).width + 12; rr(c, px - w / 2, py - 66, w, 16, 8, "rgba(7,48,31,.86)");
+      c.fillStyle = "#eaf6ef"; c.fillText(NPC_GYM.apariencia.nombre, px, py - 57.5);
+    });
+  }
+
   function construir() {
     // Piso
     decals.push(() => {
@@ -2545,12 +2613,25 @@ function montar(raiz, opciones = {}) {
   construir();
 
   /* ---------- 5.8 Colisión y rutas ---------- */
+  // Nombre del lugar donde está el jugador: se muestra arriba, en el encabezado del mapa
+  function nombreZona(x, y) {
+    if (mundo.gimnasio && y < mundo.limiteLobby && x >= mundo.gimnasio.x0) return "Gimnasio";
+    if (y >= SOTANO2.y0 - 1) return "Mensajería Hora Vive";
+    if (y >= SOTANO.y0 - 1) return "Sala de estudio";
+    if (y >= FY - 1) return "Primer piso";
+    if (y >= SEP.y) return "Coliseo";
+    if (y >= mundo.limiteLobby) return "Patio";
+    const q = mundo.cuartos.find(q => x > q.x0 && x < q.x1 && y > q.y0 && y < q.y1 + 0.1);
+    if (q) return q.nombre;
+    return "Planta baja · Lobby";
+  }
   const RJ = 0.26;
   // Límites de caminar según la zona: lobby/patio/coliseo, primer piso o sótano
   function limitesEn(y) {
     if (y >= SOTANO2.y0 - 1) return [SOTANO2.x0, SOTANO2.y0, SOTANO2.x1, SOTANO2.y1];
     if (y >= SOTANO.y0 - 1) return [SOTANO.x0, SOTANO.y0, SOTANO.x1, SOTANO.y1];
     if (y >= FY - 1) return [0, FY, PW, FY + PH];
+    if (mundo.gimnasio && y < mundo.limiteLobby) return [0, 0, mundo.gimnasio.x1, mundo.alturaBase || H];
     return [0, 0, W, mundo.alturaBase || H];
   }
   // Verdadero si (x,y) quedó fuera de la zona que le toca a ese punto (no del alto global del lobby)
@@ -2565,7 +2646,7 @@ function montar(raiz, opciones = {}) {
     return false;
   }
   if (colisiona(jug.x, jug.y)) { jug.y -= 1; }
-  const CELDA = 0.5, cols = Math.ceil(W / CELDA), filas = Math.ceil(H / CELDA);
+  const CELDA = 0.5, cols = Math.ceil((mundo.gimnasio ? mundo.gimnasio.x1 : W) / CELDA), filas = Math.ceil(H / CELDA);
   const bloq = new Uint8Array(cols * filas);
   for (let j = 0; j < filas; j++) for (let i = 0; i < cols; i++) bloq[j * cols + i] = colisiona((i + 0.5) * CELDA, (j + 0.5) * CELDA, 0.31) ? 1 : 0;
   const celdaDe = (x, y) => [acotar(Math.floor(x / CELDA), 0, cols - 1), acotar(Math.floor(y / CELDA), 0, filas - 1)];
@@ -2662,12 +2743,13 @@ function montar(raiz, opciones = {}) {
     const [wx, wy] = aMundo(ev.clientX, ev.clientY);
     if (wx >= NPC.hit[0] && wx <= NPC.hit[2] && wy >= NPC.hit[1] && wy <= NPC.hit[3]) { abrirNPC(); return; }
     if (wx >= NPC_JP.hit[0] && wx <= NPC_JP.hit[2] && wy >= NPC_JP.hit[1] && wy <= NPC_JP.hit[3]) { abrirJP(); return; }
+    if (wx >= NPC_GYM.hit[0] && wx <= NPC_GYM.hit[2] && wy >= NPC_GYM.hit[1] && wy <= NPC_GYM.hit[3]) { abrirGym(); return; }
     if (jefeDerrotado && wx >= TIENDA_MERMA.hit[0] && wx <= TIENDA_MERMA.hit[2] && wy >= TIENDA_MERMA.hit[1] && wy <= TIENDA_MERMA.hit[3]) { abrirMerma(); return; }
     if (wx >= ESTATUA.hit[0] && wx <= ESTATUA.hit[2] && wy >= ESTATUA.hit[1] && wy <= ESTATUA.hit[3]) { ESTATUA.alHablar(); return; }
     const e = espacios.find(s => wx >= s.hit[0] && wx <= s.hit[2] && wy >= s.hit[1] && wy <= s.hit[3]);
     if (e) { abrirPanel(e.id); return; }
     if (tienePistola) return;                  // con arma, el clic es para disparar, no para caminar
-    if (wx > 0 && wy > 0 && wx < W && wy < H) irAPunto(wx, wy);
+    if (wx > 0 && wy > 0 && wx < (mundo.gimnasio ? mundo.gimnasio.x1 : W) && wy < H) irAPunto(wx, wy);
   }, sig);
   lienzo.addEventListener("wheel", ev => { ev.preventDefault(); cambiarZoom(ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false, signal: ac.signal });
   lienzo.addEventListener("pointermove", ev => { mouseCliente.x = ev.clientX; mouseCliente.y = ev.clientY; mouseActivo = true; }, sig);
@@ -2769,6 +2851,9 @@ function montar(raiz, opciones = {}) {
     if (jug.x >= NPC_JP.zona[0] && jug.x <= NPC_JP.zona[2] && jug.y >= NPC_JP.zona[1] && jug.y <= NPC_JP.zona[3]) {
       const d = Math.hypot(jug.x - NPC_JP.ancla[0], jug.y - NPC_JP.ancla[1]); if (d < md) { md = d; mejor = NPC_JP; esNPC = true; }
     }
+    if (jug.x >= NPC_GYM.zona[0] && jug.x <= NPC_GYM.zona[2] && jug.y >= NPC_GYM.zona[1] && jug.y <= NPC_GYM.zona[3]) {
+      const d = Math.hypot(jug.x - NPC_GYM.ancla[0], jug.y - NPC_GYM.ancla[1]); if (d < md) { md = d; mejor = NPC_GYM; esNPC = true; }
+    }
     if (jefeDerrotado && jug.x >= TIENDA_MERMA.zona[0] && jug.x <= TIENDA_MERMA.zona[2] && jug.y >= TIENDA_MERMA.zona[1] && jug.y <= TIENDA_MERMA.zona[3]) {
       const d = Math.hypot(jug.x - TIENDA_MERMA.ancla[0], jug.y - TIENDA_MERMA.ancla[1]); if (d < md) { md = d; mejor = TIENDA_MERMA; esNPC = true; }
     }
@@ -2786,6 +2871,8 @@ function montar(raiz, opciones = {}) {
       else if (cercano) { el.pista.hidden = false; el.pista.innerHTML = `<kbd>E</kbd> Ver ${esc(cercano.nombre)}`; el.pista.onclick = () => abrirPanel(cercano.id); }
       else el.pista.hidden = true;
     }
+    const zonaTxt = nombreZona(jug.x, jug.y);
+    if (el.zona && el.zona.textContent !== zonaTxt) el.zona.textContent = zonaTxt;
     mundo.cuartos.forEach(q => { dentro[q.id] = jug.x > q.x0 && jug.x < q.x1 && jug.y > q.y0 && jug.y < q.y1 + 0.1; });
   }
 
@@ -3148,7 +3235,7 @@ function montar(raiz, opciones = {}) {
   /* ---------- 5.15 Diálogos ---------- */
   const cerrarDlg = d => { if (d && d.open) d.close(); };
   function abrirDlg(d) { if (d.open) return; if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
-  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv].forEach(d => {
+  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv, el.dlgGym].forEach(d => {
     d.addEventListener("click", ev => { if (ev.target === d) d.close(); }, sig);
     d.addEventListener("close", () => lienzo.focus({ preventScroll: true }), sig);
   });
@@ -3321,7 +3408,7 @@ function montar(raiz, opciones = {}) {
   actualizarEquipo();
   if (tienePistola) proxEnemigo = performance.now() + 1500;    // ya tenía la pistola de una sesión anterior
   ajustarLienzo();
-  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv].forEach(d => d.addEventListener("cancel", () => {}, sig));
+  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv, el.dlgGym].forEach(d => d.addEventListener("cancel", () => {}, sig));
   raf = requestAnimationFrame(bucle);
   // Pista inicial
   if (leer(cfg.claveAvatar + ".visto", false) !== true) {          // la guía rápida se muestra solo la primera vez
