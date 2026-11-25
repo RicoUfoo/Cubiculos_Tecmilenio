@@ -42,9 +42,11 @@ const BASE = {
   claveReservas: "espacio.reservas.v1",
   claveAvatar: "espacio.avatar.v1",
   claveEjemplos: "espacio.ejemplos.v1",
-  // Pistas ambientales: suenan en el sótano y en el primer piso (se desvanecen al entrar a una pelea de jefe)
+  // Pistas ambientales: suenan en el sótano, en el primer piso y en la planta baja (se desvanecen al entrar a una pelea de jefe)
   musicaSalaEstudio: "Musica/coffee-shop.mp3",
   musicaPrimerPiso: "Musica/color-your-night.mp3",
+  musicaPlantaBaja: "Musica/sans.mp3",          // lobby y patio (cubículos y JP)
+  musicaMecha: "Musica/exo-mechs.mp3",          // Gran Hocico mecánico (segunda fase del coliseo)
   claveColiseo: "espacio.coliseo.v1",
   claveDispositivo: "espacio.dispositivo.v1",
   clavePistola: "espacio.pistola.v1",
@@ -143,6 +145,7 @@ const MUNDO_TECMILENIO = {
    3. UTILIDADES
    =================================================================================== */
 const S2 = 40, TAU = Math.PI * 2;
+const NOMBRE_HOCICO = "La Aglomeracion De Mayte Y Don Carlos";      // nombre del jefe final del coliseo (cámbialo aquí)
 
 const cacheTono = new Map();
 function tono(hex, f) {
@@ -535,7 +538,7 @@ function montar(raiz, opciones = {}) {
   const COOLDOWN_RAYO_P = 180000;             // 3 minutos de recarga tras cancelar o terminar el rayo
   let quemaduras = [], ultimoQuemado = 0;
   const DURACION_QUEMADO = 10000;   // ms que tarda en borrarse del piso la marca de quemado del rayo P
-  let mouseCliente = { x: innerWidth / 2, y: innerHeight / 2 };
+  let mouseCliente = { x: innerWidth / 2, y: innerHeight / 2 }, mouseActivo = false;
   let ratonFuego = null, ratonT0 = 0;          // clic izquierdo: "f" al pulsar (tap), "g" si se mantiene
   const UMBRAL_CLIC_G = 260;                   // ms antes de pasar de disparo F a rayo G
   const blancos = [
@@ -564,10 +567,13 @@ function montar(raiz, opciones = {}) {
     <canvas class="ee-lienzo" tabindex="0" role="application" aria-label="Mapa de la sala. Muévete con las flechas o WASD. Pulsa E para ver el espacio cercano. También puedes usar la lista de espacios."></canvas>
     <header class="ee-hud">
       <div class="ee-marca"><p class="ee-eyebrow">${esc(cfg.titulo)}</p><h1>${esc(cfg.subtitulo)}</h1></div>
+      <div class="ee-vida-fila">
+      <div class="ee-tp" data-r="tpCaja" hidden title="Teletransporte (R)"><span class="ee-tp-num" data-r="tpNum"></span></div>
       <div class="ee-vida" data-r="vidaCaja" role="group" aria-label="Energía del personaje">
         <span class="ee-vida-etq">Energía</span>
         <span class="ee-vida-barra"><i data-r="vidaFill"></i></span>
         <span class="ee-vida-num" data-r="vidaTexto">${cfg.vidaMax}/${cfg.vidaMax}</span>
+      </div>
       </div>
       <div class="ee-reloj"><b data-r="hora">--:--</b><span data-r="fecha"></span><span class="ee-chip" data-r="abierto"></span></div>
       <div class="ee-arma" data-r="armaCaja" hidden>🔫 <span data-r="armaMarcador">0</span> blancos</div>
@@ -576,6 +582,7 @@ function montar(raiz, opciones = {}) {
       <button type="button" class="ee-btn ee-btn--ico" data-a="menos" aria-label="Alejar">−</button>
       <button type="button" class="ee-btn ee-btn--ico" data-a="mas" aria-label="Acercar">+</button>
       <button type="button" class="ee-btn" data-a="avatar">Mi apariencia</button>
+      <button type="button" class="ee-btn" data-a="inventario">Inventario</button>
       <button type="button" class="ee-btn" data-a="lista">Espacios</button>
       <button type="button" class="ee-btn" data-a="ayuda">Ayuda</button>
       <label class="ee-vol">Música <input type="range" min="0" max="1" step="0.05" data-r="volMusica" aria-label="Volumen de la música"></label>
@@ -598,16 +605,33 @@ function montar(raiz, opciones = {}) {
     <dialog class="ee-dlg" data-r="dlgLista" aria-labelledby="eeLiTit"></dialog>
     <dialog class="ee-dlg" data-r="dlgAyuda" aria-labelledby="eeAyTit"></dialog>
     <dialog class="ee-dlg" data-r="dlgNPC" aria-labelledby="eeNpcTit"></dialog>
-    <dialog class="ee-dlg" data-r="dlgJP" aria-labelledby="eeJpTit"></dialog>`;
+    <dialog class="ee-dlg" data-r="dlgJP" aria-labelledby="eeJpTit"></dialog>
+    <dialog class="ee-dlg" data-r="dlgInv" aria-labelledby="eeInvTit"></dialog>`;
   const $ = s => raiz.querySelector(`[data-r="${s}"]`);
   const lienzo = raiz.querySelector(".ee-lienzo"), c = lienzo.getContext("2d");
+  const barraJefe = document.createElement("div");
+  barraJefe.className = "ee-jefe"; barraJefe.hidden = true;
+  barraJefe.innerHTML = `<span class="ee-jefe-nombre">${NOMBRE_HOCICO} · Mecánico</span><div class="ee-jefe-barra"><div class="ee-jefe-relleno"></div></div>`;
+  raiz.appendChild(barraJefe);
+  const jefeRelleno = barraJefe.querySelector(".ee-jefe-relleno");
   const el = { hora: $("hora"), fecha: $("fecha"), abierto: $("abierto"), pista: $("pista"), aviso: $("aviso"), sr: $("sr"), joy: $("joy"),
     panel: $("panel"), pEyebrow: $("pEyebrow"), pTitulo: $("pTitulo"), pInfo: $("pInfo"), pAccion: $("pAccion"),
-    dlgAvatar: $("dlgAvatar"), dlgLista: $("dlgLista"), dlgAyuda: $("dlgAyuda"), dlgNPC: $("dlgNPC"), dlgJP: $("dlgJP"),
+    dlgAvatar: $("dlgAvatar"), dlgLista: $("dlgLista"), dlgAyuda: $("dlgAyuda"), dlgNPC: $("dlgNPC"), dlgJP: $("dlgJP"), dlgInv: $("dlgInv"),
     vidaCaja: $("vidaCaja"), vidaFill: $("vidaFill"), vidaTexto: $("vidaTexto"),
     armaCaja: $("armaCaja"), armaMarcador: $("armaMarcador"), btnDisparar: $("btnDisparar"), volMusica: $("volMusica"), volSfx: $("volSfx") };
 
   /* ---------- 5.5b Sistema de vida (100 de energía) ---------- */
+  const tpEl = { caja: $("tpCaja"), num: $("tpNum") };
+  function actualizarTP() {
+    const tiene = accEquipado("mascara");
+    tpEl.caja.hidden = !tiene;
+    if (!tiene) return;
+    const resta = Math.max(0, tpListoEn - performance.now()), listo = resta <= 0;
+    const avance = 1 - resta / TP_COOLDOWN_MS;
+    tpEl.caja.style.background = `conic-gradient(${listo ? "#3fd184" : "var(--ee-acc)"} ${Math.round(avance * 360)}deg, rgba(255,255,255,.18) 0deg)`;
+    tpEl.num.textContent = listo ? "R" : Math.ceil(resta / 1000);
+    tpEl.caja.classList.toggle("ee-tp--listo", listo);
+  }
   function actualizarVida() {
     const pct = acotar((vida / cfg.vidaMax) * 100, 0, 100);
     if (el.vidaFill) el.vidaFill.style.width = pct + "%";
@@ -654,12 +678,18 @@ function montar(raiz, opciones = {}) {
     nombre: "JP",
     x: (mundo.puertaPatio ? mundo.puertaPatio.x - 0.5 : 14.5), y: (mundo.limiteLobby || 0) + 1.6,
     detalle: "JP vigila el patio. Dice que trae un invocador para hacer aparecer al Centinela del patio cuantas veces quieras.",
-    apariencia: { nombre: "JP", piel: PIEL[3], pelo: PELO[1], peinado: "largo", ropa: "#7a3fb0", pantalon: "#2b2f33", accesorio: "lentes", mochila: false },
+    apariencia: { nombre: "JP", piel: PIEL[2], pelo: PELO[0], peinado: "corto", ropa: "#1e2124", pantalon: "#2f5bd3", accesorio: "lentes", mochila: false },
   };
   NPC_JP.ancla = [NPC_JP.x, NPC_JP.y + 1.1];
   NPC_JP.zona = [NPC_JP.x - 2.6, NPC_JP.y - 2.4, NPC_JP.x + 2.6, NPC_JP.y + 2.8];
   NPC_JP.hit = [NPC_JP.x - 1.2, NPC_JP.y - 1.2, NPC_JP.x + 1.2, NPC_JP.y + 1.2];
   NPC_JP.alHablar = () => abrirJP();
+  // Mesita de la tienda "Merma de JP": aparece cuando derrotas al Centinela del patio
+  const TIENDA_MERMA = { id: "tienda-merma", nombre: "Merma de JP", etiquetaAccion: "Ver tienda", x: NPC_JP.x - 2.2, y: NPC_JP.y + 0.8 };
+  TIENDA_MERMA.zona = [TIENDA_MERMA.x - 1.4, TIENDA_MERMA.y - 1.2, TIENDA_MERMA.x + 1.4, TIENDA_MERMA.y + 1.4];
+  TIENDA_MERMA.ancla = [TIENDA_MERMA.x, TIENDA_MERMA.y + 1.0];
+  TIENDA_MERMA.hit = [TIENDA_MERMA.x - 0.9, TIENDA_MERMA.y - 0.8, TIENDA_MERMA.x + 0.9, TIENDA_MERMA.y + 0.8];
+  TIENDA_MERMA.alHablar = () => abrirMerma();
 
   function actualizarEquipo() {
     if (el.armaCaja) el.armaCaja.hidden = !tienePistola;
@@ -701,6 +731,27 @@ function montar(raiz, opciones = {}) {
         <button type="button" class="ee-btn" data-a="invocarJefe" ${hayJefeActivo ? "disabled" : ""}>Usar el invocador</button>
         <button type="button" class="ee-btn ee-btn--sec" data-a="cerrarDlg">Cerrar</button>
       </div>
+    </div>`;
+    abrirDlg(dlg);
+  }
+  function abrirMerma() {
+    const dlg = el.dlgNPC;
+    const fila = id => {
+      const esAcc = !!ACCESORIOS_TIENDA[id], info = esAcc ? ACCESORIOS_TIENDA[id] : ITEMS_MISION[id];
+      const tiene = esAcc ? accesorios.obtenidos.includes(id) : inventario.misiones.includes(id);
+      return `<li class="ee-arma-op"><div><b>${esc(info.nombre)}</b><br><span class="ee-nota">${esc(info.desc)}</span></div>
+        <button type="button" class="ee-btn ee-btn--chico${tiene ? " ee-btn--sec" : ""}" data-a="obtenerAcc" data-id="${id}" ${tiene ? "disabled" : ""}>${tiene ? "Ya lo tienes" : "Obtener"}</button></li>`;
+    };
+    const placeholders = [5].map(i => `
+      <li class="ee-arma-op">
+        <div><b>Accesorio ${i}</b><br><span class="ee-nota">Placeholder: aquí irá el diseño del accesorio.</span></div>
+        <button type="button" class="ee-btn ee-btn--chico ee-btn--sec" disabled>Próximamente</button>
+      </li>`).join("");
+    dlg.innerHTML = `<div class="ee-dlg-caja">
+      <div class="ee-dlg-cab"><h2 id="eeNpcTit">${esc(TIENDA_MERMA.nombre)}</h2><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
+      <p class="ee-nota">JP puso esta mesita con accesorios para ti. Te los llevas gratis; equípalos desde "Mi apariencia".</p>
+      <ul class="ee-arma-lista">${fila("pantalones")}${fila("sticker")}${fila("mascara")}${fila("modem")}${placeholders}</ul>
+      <div class="ee-fila-botones"><button type="button" class="ee-btn" data-a="cerrarDlg">Cerrar</button></div>
     </div>`;
     abrirDlg(dlg);
   }
@@ -1020,6 +1071,8 @@ function montar(raiz, opciones = {}) {
   }
   // Defeat común a todos los enemigos (maniquíes y jefe): estilizado, con destello + "puff", sin sangre ni gore.
   function derrotarEnemigo(en, ahora) {
+    if (en.esColiseo && en.estado === "revivir") { en.hp = en.hpMax; return; }
+    if (en.esColiseo && !en.mecha) { revivirComoMecha(en, ahora); return; }
     impactos.push({ x: en.x, y: en.y, t: ahora, col: "#ffffff" });
     enemigos.splice(enemigos.indexOf(en), 1);
     if (en.esJefe) {
@@ -1195,11 +1248,39 @@ function montar(raiz, opciones = {}) {
   const PF = mundo.campo || { x0: 3.6, y0: 35.6, x1: 28.4, y1: 62.2 };    // campo de pelea (dentro de las gradas)
   const COL_CX = (PF.x0 + PF.x1) / 2, COL_CY = (PF.y0 + PF.y1) / 2;
   const HOCICO_HP = 1200, HOCICO_RADIO = 1.0;
-  const AVISO_HOCICO = { radial: 0.6, abanico: 0.7, embestida: 1.0, charcos: 1.0, espiral: 0.8, lluvia: 1.2, onda: 0.9, relampagos: 0.5 };
-  const DURA_HOCICO = { radial: 0.3, abanico: 0.3, embestida: 0.7, charcos: 0.3, espiral: 2.2, lluvia: 0.3, onda: 0.3, relampagos: 0.8 };
+  // Velocidad de los 8 láseres giratorios (radianes por segundo). Cambia estos números para ajustarla:
+  // arranca en LASER_GIRO.velInicial y sube hasta LASER_GIRO.velMaxima en LASER_GIRO.segundosParaMaxima.
+  const LASER_GIRO = { velInicial: 0.35, velMaxima: 1.2, segundosParaMaxima: 7 };
+  const AVISO_HOCICO = { radial: 0.6, abanico: 0.7, embestida: 1.0, charcos: 1.0, espiral: 0.8, lluvia: 1.2, onda: 0.9, relampagos: 0.5, rafaga: 0.8, laser: 0.9, dashes: 0.6, giro: 1.0 };
+  const DURA_HOCICO = { radial: 0.3, abanico: 0.3, embestida: 0.7, charcos: 0.3, espiral: 2.2, lluvia: 0.3, onda: 0.3, relampagos: 0.8, rafaga: 0.8, laser: 0.6, dashes: 3.5, giro: 6.5 };
   const COOLDOWN_HOCICO = [1.1, 0.8, 0.55];
+  const COOLDOWN_MECHA = [0.5, 0.4, 0.3];                  // la versión mecánica ataca casi el doble de seguido
+  const MECHA_HP = HOCICO_HP * 3, MECHA_MULT = 3;          // triple de vida y triple de proyectiles
+  const cooldownHocico = (en, f) => (en.mecha ? COOLDOWN_MECHA[f - 1] : COOLDOWN_HOCICO[f - 1]);
+  const DASH_MECHA_VEL = 22;                               // los dashes del mecánico van más rápido que la embestida (11)
   const RAYO_CIELO_DANO = 25, RAYO_CIELO_AVISO = 2.0;     // segundos de aviso antes de que caiga el rayo
-  const DASH_DURACION = 260, DASH_ENFRIAMIENTO = 900, DASH_VEL = 15, DASH_VENTANA = 280;
+  const DASH_DURACION = 260, DASH_ENFRIAMIENTO = 900, DASH_VEL = 15, DASH_VENTANA = 150;   // ms máximos entre dos toques para hacer dash (más bajo = hay que picar más rápido)
+  // Accesorios de la vitrina de JP. Se guardan en el navegador; se equipan desde "Mi apariencia".
+  const CLAVE_ACCESORIOS = "espacio.accesorios.v1";
+  const ACCESORIOS_TIENDA = {
+    pantalones: { nombre: "Pantalones perdidos", desc: "Corres más rápido." },
+    sticker: { nombre: "Sticker con caca de JP", desc: "Dasheas mucho más rápido." },
+    mascara: { nombre: "Máscara de Enderman", desc: "Pulsa R para teletransportarte hacia el mouse (cada 20 s)." },
+  };
+  // Objetos de misiones: no se equipan, se guardan en el inventario
+  const ITEMS_MISION = {
+    modem: { nombre: "Modem FiberHome Modelo HG6145F", desc: "Objeto de misión. Llévalo a quien lo necesite." },
+  };
+  const CLAVE_INVENTARIO = "espacio.inventario.v1";
+  let inventario = Object.assign({ misiones: [] }, leer(CLAVE_INVENTARIO, {}));
+  const guardarInventario = () => escribir(CLAVE_INVENTARIO, inventario);
+  const TP_COOLDOWN_MS = 20000, TP_RANGO = 7;   // enfriamiento de la máscara y distancia máxima (casillas)
+  let tpListoEn = 0;
+  let accesorios = Object.assign({ obtenidos: [], equipados: [] }, leer(CLAVE_ACCESORIOS, {}));
+  const accEquipado = id => accesorios.equipados.includes(id);
+  const guardarAccesorios = () => escribir(CLAVE_ACCESORIOS, accesorios);
+  const multCorrer = () => (accEquipado("pantalones") ? 1.6 : 1);
+  const multDash = () => (accEquipado("sticker") ? 2.4 : 1);
   // Canciones para jefes: todo lo que haya en la carpeta de música (Musica/ por defecto) o en cfg.musicasJefe.
   // Cada pelea elige una al azar. Si el navegador no puede leer la carpeta (por ejemplo abriendo el archivo sin servidor),
   // se usa Musica/CoryBoss.mp3.
@@ -1224,7 +1305,8 @@ function montar(raiz, opciones = {}) {
   }
   function elegirPistaJefe() {
     cargarPistasJefe();
-    const lista = pistasJefe || [new URL("Musica/CoryBoss.mp3", document.baseURI).href];
+    const mecha = new URL(cfg.musicaMecha, document.baseURI).href;
+    const lista = (pistasJefe || [new URL("Musica/CoryBoss.mp3", document.baseURI).href]).filter(u => u !== mecha);
     return lista[Math.floor(Math.random() * lista.length)];
   }
   let coliseo = Object.assign({ derrotado: false }, leer(cfg.claveColiseo, {}));
@@ -1300,16 +1382,17 @@ function montar(raiz, opciones = {}) {
     const pool = ["radial", "abanico", "embestida", "charcos", "onda"];
     if (f >= 2) pool.push("espiral", "relampagos");
     if (f >= 3) pool.push("lluvia", "relampagos", "onda");
+    if (en.mecha) pool.push("rafaga", "laser", "espiral", "lluvia", "dashes", "giro");
     const libres = pool.filter(a => a !== en.ultimoAtaque);
     return libres[Math.floor(Math.random() * libres.length)];
   }
   function prepararAtaqueHocico(en, ataque) {
     const f = granHocicoFase(en), [dx, dy] = dirHaciaJugador(en);
     en.ultimoAtaque = ataque; en.ataqueActual = ataque;
-    en.estado = "aviso"; en.tiempo = AVISO_HOCICO[ataque];
+    en.estado = "aviso"; en.tiempo = AVISO_HOCICO[ataque] * (en.mecha ? 0.6 : 1);
     if (ataque === "abanico") en.aviso = { tipo: "abanico", ang: Math.atan2(dy, dx) };
     else if (ataque === "embestida") en.aviso = { tipo: "embestida", dx, dy };
-    else if (ataque === "charcos") en.aviso = { tipo: "puntos", pts: Array.from({ length: 2 + f }, () => puntoEnCampoCerca(jug.x, jug.y, 2.6)) };
+    else if (ataque === "charcos") en.aviso = { tipo: "puntos", pts: Array.from({ length: (2 + f) * (en.mecha ? MECHA_MULT : 1) }, () => puntoEnCampoCerca(jug.x, jug.y, 2.6)) };
     else if (ataque === "lluvia") en.aviso = { tipo: "puntos", pts: Array.from({ length: 6 }, () => puntoEnCampo(1.6)) };
     else if (ataque === "onda") en.aviso = { tipo: "onda", hueco: Math.random() * TAU };
     else if (ataque === "relampagos") en.aviso = { tipo: "rayos" };
@@ -1318,9 +1401,10 @@ function montar(raiz, opciones = {}) {
   function ejecutarAtaqueHocico(en) {
     const f = granHocicoFase(en), a = en.ataqueActual, aviso = en.aviso, ahora = performance.now();
     en.aviso = null; en.estado = "ataque"; en.tiempo = DURA_HOCICO[a];
-    if (a === "radial") anilloHocico(en.x, en.y, [8, 12, 16][f - 1], [3.4, 3.9, 4.4][f - 1], 8, en.bob * 0.4);
+    const m = en.mecha ? MECHA_MULT : 1;
+    if (a === "radial") anilloHocico(en.x, en.y, [8, 12, 16][f - 1] * m, [3.4, 3.9, 4.4][f - 1], 8, en.bob * 0.4);
     else if (a === "abanico") {
-      const n = [5, 7, 9][f - 1];
+      const n = [5, 7, 9][f - 1] * m;
       for (let i = 0; i < n; i++) dispararHocico(en.x, en.y, aviso.ang - 0.5 + (i / (n - 1)), 6.4, 8);
     }
     else if (a === "embestida") { en.carga = { dx: aviso.dx, dy: aviso.dy, contacto: false }; en.tiempo = 0.7; }
@@ -1329,8 +1413,22 @@ function montar(raiz, opciones = {}) {
       en.tiempo = 0.3;
     }
     else if (a === "espiral") { en.espiral = { ang: 0, sig: 0 }; en.tiempo = 2.2; }
-    else if (a === "lluvia") { for (const [px, py] of aviso.pts) anilloHocico(px, py, 8, 3.2, 7, Math.random() * TAU); }
+    else if (a === "lluvia") { for (const [px, py] of aviso.pts) anilloHocico(px, py, 8 * m, 3.2, 7, Math.random() * TAU); }
     else if (a === "onda") { ondas.push({ x: en.x, y: en.y, hueco: aviso.hueco, t0: ahora, dur: 1100, r0: 1.2, r1: 10, golpeado: false }); }
+    else if (a === "rafaga") {
+      // Tres ráfagas de cinco disparos apuntados a ti, una tras otra
+      for (let w = 0; w < 3; w++) en.cola.push({ t: w * 0.28, fn: () => {
+        const [dx, dy] = dirHaciaJugador(en), a0 = Math.atan2(dy, dx);
+        for (let i = -2; i <= 2; i++) dispararHocico(en.x, en.y, a0 + i * 0.22, 7.2, 8, "#ff3fb4");
+      } });
+    }
+    else if (a === "laser") {
+      // Un rayo de proyectiles en línea recta hacia ti
+      const [dx, dy] = dirHaciaJugador(en), a0 = Math.atan2(dy, dx);
+      for (let i = 0; i < 16; i++) en.cola.push({ t: i * 0.05, fn: () => dispararHocico(en.x, en.y, a0, 9.5, 6, "#ff3fb4") });
+    }
+    else if (a === "dashes") { en.dashes = { n: 5, i: 0, fase: "aviso", t: 0.6, dx: 0, dy: 0, contacto: false }; }
+    else if (a === "giro") { en.giro = { ang: 0, vel: 0.6, t: 0, golpe: 0 }; }
     else if (a === "relampagos") {
       // Un círculo apuntado a donde estás tú (a partir de la fase 2) y el resto repartidos por el campo
       const n = [4, 5, 7][f - 1], pts = [];
@@ -1348,10 +1446,11 @@ function montar(raiz, opciones = {}) {
   function actualizarGranHocico(en, dt) {
     const ahora = performance.now(), f = granHocicoFase(en);
     en.bob = (en.bob || 0) + dt;
+    if (en.cola && en.cola.length) en.cola = en.cola.filter(e => { e.t -= dt; if (e.t > 0) return true; e.fn(); return false; });
     if (en.fasePrev !== f) {
       if (en.fasePrev !== undefined) {
-        avisar(f === 2 ? "¡Gran Hocico se enfurece!" : "¡Gran Hocico entra en su última fase!");
-        anunciar("Gran Hocico cambia de fase.");
+        avisar(f === 2 ? `¡${NOMBRE_HOCICO} se enfurece!` : `¡${NOMBRE_HOCICO} entra en su última fase!`);
+        anunciar(`${NOMBRE_HOCICO} cambia de fase.`);
       }
       en.fasePrev = f;
     }
@@ -1381,7 +1480,7 @@ function montar(raiz, opciones = {}) {
       if (en.ataqueActual === "espiral" && en.espiral) {
         en.espiral.sig -= dt;
         if (en.espiral.sig <= 0) {
-          en.espiral.sig = 0.11; en.espiral.ang += 0.42;
+          en.espiral.sig = en.mecha ? 0.07 : 0.11; en.espiral.ang += 0.42;
           dispararHocico(en.x, en.y, en.espiral.ang, 4.6, 7);
           dispararHocico(en.x, en.y, en.espiral.ang + Math.PI, 4.6, 7);
         }
@@ -1393,30 +1492,71 @@ function montar(raiz, opciones = {}) {
           if (!en.carga.contacto && Math.hypot(jug.x - en.x, jug.y - en.y) < HOCICO_RADIO + 0.35) { en.carga.contacto = true; golpear(14); }
         }
       }
-      if (en.estado === "ataque" && en.tiempo <= 0) { en.estado = "mover"; en.tiempo = COOLDOWN_HOCICO[f - 1]; en.carga = null; en.espiral = null; }
+      if (en.dashes) {
+        // Cinco dashes seguidos: cada uno avisa hacia dónde va (línea roja) y luego sale disparado
+        const D = en.dashes; D.t -= dt;
+        if (D.fase === "aviso") {
+          const [dx, dy] = dirHaciaJugador(en);
+          en.aviso = { tipo: "embestida", dx, dy };
+          if (D.t <= 0) { D.dx = dx; D.dy = dy; D.fase = "carga"; D.t = 0.24; D.contacto = false; en.aviso = null; }
+        } else {
+          const nx = en.x + D.dx * DASH_MECHA_VEL * dt, ny = en.y + D.dy * DASH_MECHA_VEL * dt;
+          if (colisiona(nx, ny, 0.7)) D.t = 0;
+          else {
+            en.x = nx; en.y = ny;
+            if (!D.contacto && Math.hypot(jug.x - en.x, jug.y - en.y) < HOCICO_RADIO + 0.35) { D.contacto = true; golpear(10); }
+          }
+          if (D.t <= 0) { D.i++; if (D.i >= D.n) en.dashes = null; else { D.fase = "aviso"; D.t = 0.45; } }
+        }
+      }
+      if (en.giro) {
+        // Ocho láseres gigantes desde el centro del coliseo: giran y se aceleran; quema si te tocan
+        const G = en.giro; G.t += dt;
+        G.vel = LASER_GIRO.velInicial + (LASER_GIRO.velMaxima - LASER_GIRO.velInicial) * Math.min(1, G.t / LASER_GIRO.segundosParaMaxima); G.ang += G.vel * dt;
+        const k = Math.min(1, dt * 3); en.x += (COL_CX - en.x) * k; en.y += (COL_CY - en.y) * k;
+        const px = jug.x - en.x, py = jug.y - en.y;
+        for (let i = 0; i < 8 && ahora - G.golpe > 500; i++) {
+          const a = G.ang + i * Math.PI / 4, cs = Math.cos(a), sn = Math.sin(a);
+          const proj = px * cs + py * sn, perp = Math.abs(-px * sn + py * cs);
+          if (proj > 0 && proj < 40 && perp < 0.9) { G.golpe = ahora; golpear(12); }
+        }
+      }
+      if (en.estado === "ataque" && en.tiempo <= 0) { en.estado = "mover"; en.tiempo = cooldownHocico(en, f); en.carga = null; en.espiral = null; en.giro = null; en.dashes = null; }
+    } else if (en.estado === "revivir") {
+      en.tiempo -= dt;
+      if (en.tiempo <= 0) { en.estado = "mover"; en.tiempo = cooldownHocico(en, granHocicoFase(en)); avisar(`¡${NOMBRE_HOCICO} mecánico ataca!`); }
     } else if (en.estado === "aturdido") {
       en.tiempo -= dt;
-      if (en.tiempo <= 0) { en.estado = "mover"; en.tiempo = COOLDOWN_HOCICO[f - 1]; }
+      if (en.tiempo <= 0) { en.estado = "mover"; en.tiempo = cooldownHocico(en, f); }
     }
   }
 
   /* ----- Invocación, derrota y reinicio ----- */
   function invocarColiseo() {
-    if (bossCol && enemigos.includes(bossCol)) { avisar("Gran Hocico ya está en el coliseo."); return; }
+    if (bossCol && enemigos.includes(bossCol)) { avisar(`${NOMBRE_HOCICO} ya está en el coliseo.`); return; }
     if (!tienePistola) { avisar("Necesitas un arma para enfrentarlo. Consíguela con el encargado de objetos perdidos."); return; }
-    bossCol = { id: "gran-hocico", esColiseo: true, nombreJefe: "Gran Hocico", x: COL_CX, y: PF.y0 + 4.5,
+    bossCol = { id: "gran-hocico", esColiseo: true, nombreJefe: `${NOMBRE_HOCICO}`, x: COL_CX, y: PF.y0 + 4.5,
       hp: HOCICO_HP, hpMax: HOCICO_HP, radio: HOCICO_RADIO, bob: 0, dir: "down", paso: 0, mov: false,
-      estado: "mover", tiempo: 1.8 };
+      estado: "mover", tiempo: 1.8, cola: [] };
     enemigos.push(bossCol);
     pistaJefe = elegirPistaJefe();
-    avisar(coliseo.derrotado ? "¡Gran Hocico vuelve a la arena! Revancha." : "¡Gran Hocico aparece! El público enloquece.");
-    anunciar("Jefe final del coliseo: Gran Hocico. Lee los círculos del suelo y esquiva los rayos.");
+    avisar(coliseo.derrotado ? `¡${NOMBRE_HOCICO} vuelve a la arena! Revancha.` : `¡${NOMBRE_HOCICO} aparece! El público enloquece.`);
+    anunciar(`Jefe final del coliseo: ${NOMBRE_HOCICO}. Lee los círculos del suelo y esquiva los rayos.`);
+  }
+  function revivirComoMecha(en, ahora) {
+    en.mecha = true; en.hpMax = MECHA_HP; en.hp = MECHA_HP;
+    en.estado = "revivir"; en.tiempo = 3.0; en.carga = null; en.espiral = null; en.aviso = null; en.cola = []; en.bob = 0;
+    balasJefe = []; charcos = []; rayosPend = []; ondas = [];
+    impactos.push({ x: en.x, y: en.y, t: ahora, col: "#ff3fb4" });
+    pistaJefe = new URL(cfg.musicaMecha, document.baseURI).href;   // la canción nueva para la segunda fase
+    avisar(`¡${NOMBRE_HOCICO} cae... y se levanta como mecánico!`);
+    anunciar(`${NOMBRE_HOCICO} se transforma en mecánico. Su vida vuelve al máximo y ataca con todo.`);
   }
   function coliseoVencido() {
     coliseo.derrotado = true; escribir(cfg.claveColiseo, coliseo);
     bossCol = null; balasJefe = []; charcos = []; rayosPend = []; ondas = [];
     verity.ok = true; verity.x = jug.x; verity.y = jug.y - 0.8;
-    avisar("¡Gran Hocico cayó! Has terminado el coliseo. Verity se une a tu equipo.");
+    avisar(`¡${NOMBRE_HOCICO} cayó! Has terminado el coliseo. Verity se une a tu equipo.`);
     anunciar("Jefe final derrotado. Verity, una mascota amarilla, ahora te sigue.");
   }
   function reiniciarColiseoTrasDesmayo() {
@@ -1438,13 +1578,35 @@ function montar(raiz, opciones = {}) {
       ultimoToque.dir = clave; ultimoToque.t = ahora;
     }
   }
+  function teletransportar() {
+    if (hayDialogo() || panelId || !accEquipado("mascara")) return;
+    const ahora = performance.now();
+    if (ahora < tpListoEn) return;
+    if (!mouseActivo) { avisar("Mueve el mouse sobre el mapa para elegir a dónde teletransportarte."); return; }
+    let [tx, ty] = aMundo(mouseCliente.x, mouseCliente.y);
+    const dx = tx - jug.x, dy = ty - jug.y, d = Math.hypot(dx, dy);
+    if (d < 0.01) return;
+    const f = Math.min(1, TP_RANGO / d); tx = jug.x + dx * f; ty = jug.y + dy * f;
+    // Avanza hacia el destino y se queda en el último punto libre (no atraviesa paredes ni muebles)
+    const pasos = Math.max(1, Math.ceil(Math.hypot(tx - jug.x, ty - jug.y) / 0.2));
+    let ux = jug.x, uy = jug.y;
+    for (let i = 1; i <= pasos; i++) {
+      const px = jug.x + (tx - jug.x) * i / pasos, py = jug.y + (ty - jug.y) * i / pasos;
+      if (colisiona(px, py)) break;
+      ux = px; uy = py;
+    }
+    if (Math.hypot(ux - jug.x, uy - jug.y) < 0.5) { avisar("No hay espacio libre hacia ahí."); return; }
+    jug.x = ux; jug.y = uy; jug.dashHasta = 0;
+    tpListoEn = ahora + TP_COOLDOWN_MS;
+    avisar("¡Teletransporte!");
+  }
   function hacerDash(sen) {
     const ahora = performance.now();
     if (hayDialogo() || panelId || ahora < jug.dashCdHasta) return;
     const [dx, dy] = pantallaAMundoDir(sen[0], sen[1]), l = Math.hypot(dx, dy) || 1;
     jug.dashDx = dx / l; jug.dashDy = dy / l;
     jug.dashHasta = ahora + DASH_DURACION;
-    jug.dashCdHasta = ahora + DASH_ENFRIAMIENTO;
+    jug.dashCdHasta = ahora + DASH_ENFRIAMIENTO / multDash();
     ruta = [];
   }
 
@@ -1498,11 +1660,12 @@ function montar(raiz, opciones = {}) {
   const AMBIENTE_FADE_S = 1.2;                              // segundos que tarda en desvanecerse o aparecer
   const ambiente = {                                         // zona -> pista y su nivel actual (0 a 1)
     salaEstudio: { url: new URL(cfg.musicaSalaEstudio, document.baseURI).href, audio: null, nivel: 0, fallo: false },
-    primerPiso: { url: new URL(cfg.musicaPrimerPiso, document.baseURI).href, audio: null, nivel: 0, fallo: false }
+    primerPiso: { url: new URL(cfg.musicaPrimerPiso, document.baseURI).href, audio: null, nivel: 0, fallo: false },
+    plantaBaja: { url: new URL(cfg.musicaPlantaBaja, document.baseURI).href, audio: null, nivel: 0, fallo: false }
   };
   function actualizarMusicaAmbiente(dt) {
     const peleaJefe = enPeleaJefe();
-    const zonaActual = jug.y >= SOTANO2.y0 - 1 ? null : jug.y >= SOTANO.y0 - 1 ? "salaEstudio" : jug.y >= FY - 1 ? "primerPiso" : null;
+    const zonaActual = jug.y >= SOTANO2.y0 - 1 ? null : jug.y >= SOTANO.y0 - 1 ? "salaEstudio" : jug.y >= FY - 1 ? "primerPiso" : jug.y < SEP.y ? "plantaBaja" : null;
     for (const zona of Object.keys(ambiente)) {
       const a = ambiente[zona];
       const objetivo = zona === zonaActual && !peleaJefe ? 1 : 0;
@@ -1635,6 +1798,28 @@ function montar(raiz, opciones = {}) {
   HOCICO_IMG.src = new URL("Sprites/gran-hocico.png", document.baseURI).href;
   const HOCICO_CUADROS = {"idle":[[25,15,275,181],[300,15,292,181],[607,15,277,181],[885,15,284,181],[1183,15,260,181]],"andar":[[15,219,263,169],[281,219,249,167],[530,219,245,168],[775,223,245,165],[1021,227,245,161],[1277,234,229,154]],"aviso":[[13,418,263,161],[276,418,272,161],[548,430,275,153],[845,418,291,164],[1149,418,365,165]],"ataque":[[15,612,269,224],[285,613,487,223],[779,612,216,218],[995,622,305,210],[1300,612,236,225]],"aturdido":[[0,861,305,146],[305,876,300,131],[605,878,265,129],[870,861,285,146],[1155,897,191,110],[1370,951,155,56]]};
   const HOCICO_ESCALA = 0.5;
+  const MECHA_IMG = new Image();
+  MECHA_IMG.src = new URL("Sprites/gran-hocico-mecha.png", document.baseURI).href;
+  const MECHA_CUADROS = {"idle":[[56,35,198,114],[290,35,196,116],[517,36,193,115],[751,36,197,114],[991,36,206,115],[1237,35,201,116]],"andar":[[36,190,240,123],[295,195,227,120],[543,196,245,121],[799,195,219,124],[1038,199,244,117],[1269,199,251,122]],"aviso":[[28,365,224,108],[281,366,236,113],[546,360,254,120],[800,359,250,124],[1050,353,250,130],[1322,356,198,127]],"ataque":[[19,514,167,153],[222,521,156,150],[413,515,153,156],[589,513,199,159],[798,519,202,148],[1000,521,140,137],[1161,528,129,133],[1308,540,108,113],[1434,524,88,144]],"beam":[[35,700,188,109],[260,706,270,106],[530,709,230,102],[760,708,255,101],[1032,699,160,110],[1211,699,243,109]],"muerte":[[22,852,187,136],[220,852,202,136],[432,856,208,131],[640,879,210,108],[850,871,230,115],[1080,848,431,139]]};
+  const MECHA_ESCALA = 0.62;
+  const MECHA_ATAQUE_CUADRO = { radial: 6, relampagos: 8, abanico: 4, rafaga: 4, lluvia: 2, espiral: 5, onda: 7, charcos: 1, giro: 6, dashes: 0 };
+  function cuadroMecha(en) {
+    const M = MECHA_CUADROS, bob = en.bob || 0;
+    if (en.estado === "revivir") {
+      const p = 1 - en.tiempo / 3.0;   // cae (muerte hacia adelante) y se levanta (en reversa)
+      const i = p < 0.5 ? Math.floor(p * 12) : 5 - Math.floor((p - 0.5) * 12);
+      return M.muerte[Math.min(5, Math.max(0, i))];
+    }
+    if (en.estado === "aturdido") return M.muerte[4 + (Math.floor(bob * 2) % 2)];
+    if (en.estado === "ataque" && en.ataqueActual === "dashes") return en.dashes && en.dashes.fase === "carga" ? M.aviso[5] : M.aviso[0];
+    if (en.estado === "aviso" || (en.estado === "ataque" && en.ataqueActual === "embestida")) return M.aviso[Math.floor(bob * 6) % M.aviso.length];
+    if (en.estado === "ataque") {
+      if (en.ataqueActual === "laser") return M.beam[1 + (Math.floor(bob * 12) % 3)];
+      return M.ataque[MECHA_ATAQUE_CUADRO[en.ataqueActual] ?? 0];
+    }
+    if (en.mov) return M.andar[Math.floor((en.paso || 0) / 1.2) % M.andar.length];
+    return M.idle[Math.floor(bob * 3) % M.idle.length];
+  }
   const HOCICO_ATAQUE_CUADRO = { radial: 0, relampagos: 0, abanico: 1, lluvia: 1, espiral: 2, charcos: 3, onda: 4 };
   function cuadroHocico(en) {
     const F = HOCICO_CUADROS, bob = en.bob || 0;
@@ -1648,19 +1833,32 @@ function montar(raiz, opciones = {}) {
     const f = granHocicoFase(en);
     const [sx, sy] = P(en.x, en.y, 0);
     const salto = en.mov ? Math.abs(Math.sin(en.paso || 0)) * 4 : Math.abs(Math.sin((en.bob || 0) * 2)) * 1.5;
-    const [fx, fy, fw, fh] = cuadroHocico(en);
-    const w = fw * HOCICO_ESCALA, h = fh * HOCICO_ESCALA, pies = sy - salto;
+    if (en.giro) {
+      const [gx, gy] = P(en.x, en.y, 0);
+      c.lineCap = "round";
+      for (let k = 0; k < 8; k++) {
+        const a = en.giro.ang + k * Math.PI / 4;
+        const [ex, ey] = P(en.x + Math.cos(a) * 40, en.y + Math.sin(a) * 40, 0);
+        c.beginPath(); c.moveTo(gx, gy); c.lineTo(ex, ey);
+        c.lineWidth = 36; c.strokeStyle = "rgba(255,63,180,.32)"; c.stroke();
+        c.lineWidth = 10; c.strokeStyle = "#ffd6ef"; c.stroke();
+      }
+    }
+    const mech = !!en.mecha, img = mech ? MECHA_IMG : HOCICO_IMG;
+    const [fx, fy, fw, fh] = mech ? cuadroMecha(en) : cuadroHocico(en);
+    const esc = mech ? MECHA_ESCALA : HOCICO_ESCALA;
+    const w = fw * esc, h = fh * esc, pies = sy - salto;
     c.beginPath(); c.ellipse(sx, sy - 6, w * 0.34, 9, 0, 0, TAU); c.fillStyle = "rgba(0,0,0,.28)"; c.fill();
     if (f === 3) {
       const gl = c.createRadialGradient(sx, pies - h / 2, 10, sx, pies - h / 2, w * 0.7);
       gl.addColorStop(0, "rgba(255,60,60,.28)"); gl.addColorStop(1, "rgba(255,60,60,0)");
       c.fillStyle = gl; c.beginPath(); c.arc(sx, pies - h / 2, w * 0.7, 0, TAU); c.fill();
     }
-    if (HOCICO_IMG.complete && HOCICO_IMG.naturalWidth) {
+    if (img.complete && img.naturalWidth) {
       c.save();
       c.translate(sx, pies);
       if (jug.x > en.x) c.scale(-1, 1);   // la hoja mira a la izquierda; se voltea hacia el jugador
-      c.drawImage(HOCICO_IMG, fx, fy, fw, fh, -w / 2, -h, w, h);
+      c.drawImage(img, fx, fy, fw, fh, -w / 2, -h, w, h);
       c.restore();
     }
     // Barra de vida y nombre (encima del sprite)
@@ -1668,7 +1866,7 @@ function montar(raiz, opciones = {}) {
     rr(c, sx - wB / 2, yB, wB, 9, 3, "rgba(0,0,0,.5)");
     rr(c, sx - wB / 2, yB, wB * pct, 9, 3, pct > 0.4 ? "#6ee07a" : "#e5534b");
     c.font = "700 13px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
-    const txt = "Gran Hocico · Jefe final", tw = c.measureText(txt).width + 16;
+    const txt = `${NOMBRE_HOCICO} · Jefe final`, tw = c.measureText(txt).width + 16;
     rr(c, sx - tw / 2, yB - 22, tw, 17, 8, "rgba(90,30,50,.9)");
     c.fillStyle = "#ffe9ef"; c.fillText(txt, sx, yB - 13.5);
   }
@@ -1755,11 +1953,6 @@ function montar(raiz, opciones = {}) {
         const ahora = performance.now();
         publico.forEach(e => dibujarEspectador(e, ahora));
       });
-    });
-    // Columnas dentro del campo
-    [[7.5, 41], [7.5, 55], [24.5, 41], [24.5, 55]].forEach(([x, y]) => {
-      solidos.push([x - 0.35, y - 0.35, x + 0.35, y + 0.35]);
-      agregar(x, y, 2.2, () => cil(x, y, 0.35, 0, 2.2, "#e8e0cc"));
     });
     // Piso de arena del coliseo y del campo
     decals.push(() => {
@@ -2274,10 +2467,23 @@ function montar(raiz, opciones = {}) {
     solidos.push([NPC_JP.x - 0.3, NPC_JP.y - 0.3, NPC_JP.x + 0.3, NPC_JP.y + 0.3]);
     agregar(NPC_JP.x, NPC_JP.y, 1.9, () => {
       const [px, py] = P(NPC_JP.x, NPC_JP.y, 0);
-      dibujarAvatar(c, NPC_JP.apariencia, { x: px, y: py, dir: "up" });
+      dibujarAvatar(c, NPC_JP.apariencia, { x: px, y: py, dir: "down" });
       c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
       const w = c.measureText(NPC_JP.apariencia.nombre).width + 12; rr(c, px - w / 2, py - 66, w, 16, 8, "rgba(60,30,80,.86)");
       c.fillStyle = "#f3e9fb"; c.fillText(NPC_JP.apariencia.nombre, px, py - 57.5);
+    });
+
+    // Mesita de "Merma de JP" (solo visible tras derrotar al Centinela)
+    agregar(TIENDA_MERMA.x, TIENDA_MERMA.y, 1.0, () => {
+      if (!jefeDerrotado) return;
+      const x0 = TIENDA_MERMA.x, y0 = TIENDA_MERMA.y;
+      caja(x0 - 0.7, y0 - 0.5, 1.4, 1.0, 0, 0.9, "#8d6e4f");
+      caja(x0 - 0.75, y0 - 0.55, 1.5, 1.1, 0.9, 0.1, "#c94f6d");
+      cil(x0 - 0.3, y0 - 0.1, 0.12, 1.0, 0.35, "#7fd1b9"); cil(x0 + 0.3, y0 + 0.1, 0.12, 1.0, 0.35, "#e0b25a");
+      const [px, py] = P(x0, y0 - 0.6, 0);
+      c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+      const w = c.measureText("Merma de JP").width + 12; rr(c, px - w / 2, py - 14, w, 16, 8, "rgba(60,30,80,.86)");
+      c.fillStyle = "#f3e9fb"; c.fillText("Merma de JP", px, py - 5.5);
     });
 
     // Blancos de práctica: discos concéntricos en el piso que la pistola puede golpear
@@ -2425,6 +2631,7 @@ function montar(raiz, opciones = {}) {
     else if (k === "f") { teclas.add("f"); disparar(); ev.preventDefault(); }
     else if (k === "g") { teclas.add("g"); ev.preventDefault(); }
     else if (k === "p") { activarRayoUltra(); ev.preventDefault(); }
+    else if (k === "r") { teletransportar(); ev.preventDefault(); }
   }, sig);
   addEventListener("keyup", ev => teclas.delete(ev.key.toLowerCase()), sig);
   addEventListener("blur", () => teclas.clear(), sig);
@@ -2455,6 +2662,7 @@ function montar(raiz, opciones = {}) {
     const [wx, wy] = aMundo(ev.clientX, ev.clientY);
     if (wx >= NPC.hit[0] && wx <= NPC.hit[2] && wy >= NPC.hit[1] && wy <= NPC.hit[3]) { abrirNPC(); return; }
     if (wx >= NPC_JP.hit[0] && wx <= NPC_JP.hit[2] && wy >= NPC_JP.hit[1] && wy <= NPC_JP.hit[3]) { abrirJP(); return; }
+    if (jefeDerrotado && wx >= TIENDA_MERMA.hit[0] && wx <= TIENDA_MERMA.hit[2] && wy >= TIENDA_MERMA.hit[1] && wy <= TIENDA_MERMA.hit[3]) { abrirMerma(); return; }
     if (wx >= ESTATUA.hit[0] && wx <= ESTATUA.hit[2] && wy >= ESTATUA.hit[1] && wy <= ESTATUA.hit[3]) { ESTATUA.alHablar(); return; }
     const e = espacios.find(s => wx >= s.hit[0] && wx <= s.hit[2] && wy >= s.hit[1] && wy <= s.hit[3]);
     if (e) { abrirPanel(e.id); return; }
@@ -2462,7 +2670,7 @@ function montar(raiz, opciones = {}) {
     if (wx > 0 && wy > 0 && wx < W && wy < H) irAPunto(wx, wy);
   }, sig);
   lienzo.addEventListener("wheel", ev => { ev.preventDefault(); cambiarZoom(ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false, signal: ac.signal });
-  lienzo.addEventListener("pointermove", ev => { mouseCliente.x = ev.clientX; mouseCliente.y = ev.clientY; }, sig);
+  lienzo.addEventListener("pointermove", ev => { mouseCliente.x = ev.clientX; mouseCliente.y = ev.clientY; mouseActivo = true; }, sig);
   function cambiarZoom(f) { zoom = acotar(zoom * f, 0.5, 2.4); }
 
   // Joystick táctil
@@ -2509,7 +2717,7 @@ function montar(raiz, opciones = {}) {
       dx /= l; dy /= l;
       jug.mx = dx; jug.my = dy;                   // dirección en coordenadas del mundo: la usa la pistola al disparar
       const corriendo = teclas.has("shift");
-      const vel = (enDash ? DASH_VEL : (corriendo ? 6.8 : 4.2)) * dt, ax = jug.x, ay = jug.y;
+      const vel = (enDash ? DASH_VEL * multDash() : (corriendo ? 6.8 * multCorrer() : 4.2)) * dt, ax = jug.x, ay = jug.y;
       let nx = jug.x + dx * vel; const topeX = colisiona(nx, jug.y); if (!topeX) jug.x = nx;
       let ny = jug.y + dy * vel; const topeY = colisiona(jug.x, ny); if (!topeY) jug.y = ny;
       // Chocar contra un mueble o pared mientras corres te quita un poco de energía (breve invulnerabilidad en golpear())
@@ -2560,6 +2768,9 @@ function montar(raiz, opciones = {}) {
     }
     if (jug.x >= NPC_JP.zona[0] && jug.x <= NPC_JP.zona[2] && jug.y >= NPC_JP.zona[1] && jug.y <= NPC_JP.zona[3]) {
       const d = Math.hypot(jug.x - NPC_JP.ancla[0], jug.y - NPC_JP.ancla[1]); if (d < md) { md = d; mejor = NPC_JP; esNPC = true; }
+    }
+    if (jefeDerrotado && jug.x >= TIENDA_MERMA.zona[0] && jug.x <= TIENDA_MERMA.zona[2] && jug.y >= TIENDA_MERMA.zona[1] && jug.y <= TIENDA_MERMA.zona[3]) {
+      const d = Math.hypot(jug.x - TIENDA_MERMA.ancla[0], jug.y - TIENDA_MERMA.ancla[1]); if (d < md) { md = d; mejor = TIENDA_MERMA; esNPC = true; }
     }
     for (const it of INTERACTIVOS_ESCALERA) {
       if (jug.x >= it.zona[0] && jug.x <= it.zona[2] && jug.y >= it.zona[1] && jug.y <= it.zona[3]) {
@@ -2769,10 +2980,15 @@ function montar(raiz, opciones = {}) {
 
   /* ---------- 5.12 Bucle ---------- */
   let ultimo = performance.now(), raf = 0, tickEstado = 0;
+  function actualizarBarraJefe() {
+    const j = bossCol && bossCol.mecha && enemigos.includes(bossCol) ? bossCol : null;
+    barraJefe.hidden = !j;
+    if (j) jefeRelleno.style.width = (acotar(j.hp / j.hpMax, 0, 1) * 100).toFixed(1) + "%";
+  }
   function bucle(t) {
     const dt = Math.min(0.05, (t - ultimo) / 1000); ultimo = t;
     if (t - tickEstado > 500) { tickEstado = t; refrescarEstados(); }
-    actualizar(dt); dibujar(t);
+    actualizar(dt); dibujar(t); actualizarBarraJefe(); actualizarTP();
     raf = requestAnimationFrame(bucle);
   }
 
@@ -2896,6 +3112,18 @@ function montar(raiz, opciones = {}) {
     if (a === "mas") cambiarZoom(1.2); else if (a === "menos") cambiarZoom(1 / 1.2);
     else if (a === "avatar") abrirAvatar(); else if (a === "lista") abrirLista(); else if (a === "ayuda") abrirAyuda();
     else if (a === "cerrarPanel") cerrarPanel();
+    else if (a === "inventario") abrirInventario();
+    else if (a === "obtenerAcc") {
+      const id = b.dataset.id;
+      if (ACCESORIOS_TIENDA[id] && !accesorios.obtenidos.includes(id)) { accesorios.obtenidos.push(id); guardarAccesorios(); avisar(`Obtuviste: ${ACCESORIOS_TIENDA[id].nombre}.`); }
+      else if (ITEMS_MISION[id] && !inventario.misiones.includes(id)) { inventario.misiones.push(id); guardarInventario(); avisar(`Guardaste en el inventario: ${ITEMS_MISION[id].nombre}.`); }
+      abrirMerma();
+    }
+    else if (a === "equiparAcc") {
+      const id = b.dataset.id;
+      accesorios.equipados = accEquipado(id) ? accesorios.equipados.filter(q => q !== id) : [...accesorios.equipados, id];
+      guardarAccesorios(); renderSlotsAcc();
+    }
     else if (a === "reservar") { formAbierto = true; renderAccion(); }
     else if (a === "volver") { formAbierto = false; renderAccion(); el.pAccion.querySelector("button")?.focus(); }
     else if (a === "ir") { const e = porId(panelId); if (irAPunto(e.ancla[0], e.ancla[1])) { avisar(`Caminando hacia ${e.nombre}…`); } if (innerWidth < 720) cerrarPanel(); }
@@ -2920,7 +3148,7 @@ function montar(raiz, opciones = {}) {
   /* ---------- 5.15 Diálogos ---------- */
   const cerrarDlg = d => { if (d && d.open) d.close(); };
   function abrirDlg(d) { if (d.open) return; if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
-  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP].forEach(d => {
+  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv].forEach(d => {
     d.addEventListener("click", ev => { if (ev.target === d) d.close(); }, sig);
     d.addEventListener("close", () => lienzo.focus({ preventScroll: true }), sig);
   });
@@ -2991,6 +3219,28 @@ function montar(raiz, opciones = {}) {
   el.dlgLista.addEventListener("close", () => { el.dlgLista.dataset.lista = ""; }, sig);
 
   // ---- Apariencia
+  function htmlSlotsAcc() {
+    return [0, 1, 2, 3, 4].map(i => {
+      const id = accesorios.obtenidos[i];
+      if (!id || !ACCESORIOS_TIENDA[id]) return '<span class="ee-acc-cuadro"></span>';
+      const on = accEquipado(id), info = ACCESORIOS_TIENDA[id];
+      return `<button type="button" class="ee-acc-cuadro ee-acc-cuadro--tiene${on ? " ee-acc-cuadro--on" : ""}" data-a="equiparAcc" data-id="${id}" aria-pressed="${on}" title="${esc(info.desc)}">${esc(info.nombre)}</button>`;
+    }).join("");
+  }
+  function abrirInventario() {
+    const items = inventario.misiones.map(id => ITEMS_MISION[id]).filter(Boolean);
+    el.dlgInv.innerHTML = `<div class="ee-dlg-caja">
+      <div class="ee-dlg-cab"><h2 id="eeInvTit">Inventario</h2><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
+      <p class="ee-nota">Objetos de misiones. No se equipan: sirven para avanzar.</p>
+      ${items.length ? `<ul class="ee-arma-lista">${items.map(i => `<li class="ee-arma-op"><div><b>${esc(i.nombre)}</b><br><span class="ee-nota">${esc(i.desc)}</span></div></li>`).join("")}</ul>` : '<p class="ee-nota">Aún no tienes objetos de misiones.</p>'}
+      <div class="ee-fila-botones"><button type="button" class="ee-btn" data-a="cerrarDlg">Cerrar</button></div>
+    </div>`;
+    abrirDlg(el.dlgInv);
+  }
+  function renderSlotsAcc() {
+    const cont = el.dlgAvatar && el.dlgAvatar.querySelector(".ee-acc-cuadros");
+    if (cont) cont.innerHTML = htmlSlotsAcc();
+  }
   let borrador = null, animPrev = 0;
   function abrirAvatar() {
     borrador = { ...avatar };
@@ -2999,13 +3249,19 @@ function montar(raiz, opciones = {}) {
     el.dlgAvatar.innerHTML = `<form class="ee-dlg-caja" method="dialog" novalidate><div class="ee-dlg-cab"><h2 id="eeAvTit">Mi apariencia</h2><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
       <div class="ee-av">
         <div class="ee-av-prev"><canvas width="220" height="260" aria-label="Vista previa de tu personaje" role="img"></canvas>
-          <div class="ee-fila-botones"><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="azar">Sorpréndeme</button><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="reset">Restablecer</button></div></div>
+          <div class="ee-fila-botones"><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="azar">Sorpréndeme</button><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="reset">Restablecer</button></div>
+          <div class="ee-acc"><div class="ee-acc-cab"><h3 class="ee-acc-tit">Accesorios</h3><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="personalizar">Personalizar</button></div><div class="ee-acc-cuadros" aria-label="Accesorios">${htmlSlotsAcc()}</div></div></div>
         <div class="ee-av-campos">
-          <div class="ee-campo"><label for="avNombre">Nombre (se ve sobre tu personaje)</label><input id="avNombre" maxlength="16" value="${esc(borrador.nombre)}" autocomplete="off"></div>
-          <div class="ee-campos"><div class="ee-campo"><label for="avPeinado">Peinado</label><select id="avPeinado">${opt("peinado", PEINADOS)}</select></div>
-          <div class="ee-campo"><label for="avAcc">Accesorio</label><select id="avAcc">${opt("accesorio", ACCESORIOS)}</select></div></div>
-          ${sw("piel", PIEL, "Tono de piel")}${sw("pelo", PELO, "Color de cabello")}${sw("ropa", ROPA, "Playera")}${sw("pantalon", PANT, "Pantalón")}
-          <label class="ee-check"><input type="checkbox" id="avMochila" ${borrador.mochila ? "checked" : ""}> Mochila</label>
+          <div class="ee-av-main">
+            <div class="ee-campo"><label for="avNombre">Nombre (se ve sobre tu personaje)</label><input id="avNombre" maxlength="16" value="${esc(borrador.nombre)}" autocomplete="off"></div>
+            <div class="ee-campos"><div class="ee-campo"><label for="avPeinado">Peinado</label><select id="avPeinado">${opt("peinado", PEINADOS)}</select></div>
+            <div class="ee-campo"><label for="avAcc">Accesorio</label><select id="avAcc">${opt("accesorio", ACCESORIOS)}</select></div></div>
+            <label class="ee-check"><input type="checkbox" id="avMochila" ${borrador.mochila ? "checked" : ""}> Mochila</label>
+          </div>
+          <div class="ee-colores" hidden>
+            <div class="ee-acc-cab"><h3 class="ee-acc-tit">Personalizar colores</h3><button type="button" class="ee-btn ee-btn--sec ee-btn--chico" data-av="volver">Volver</button></div>
+            ${sw("piel", PIEL, "Tono de piel")}${sw("pelo", PELO, "Color de cabello")}${sw("ropa", ROPA, "Playera")}${sw("pantalon", PANT, "Pantalón")}
+          </div>
         </div></div>
       <div class="ee-fila-botones"><button type="submit" class="ee-btn" data-av="guardar">Guardar</button><button type="button" class="ee-btn ee-btn--sec" data-a="cerrarDlg">Cancelar</button></div></form>`;
     const f = el.dlgAvatar.querySelector("form"), cv = f.querySelector("canvas"), g = cv.getContext("2d");
@@ -3029,6 +3285,13 @@ function montar(raiz, opciones = {}) {
     });
     f.addEventListener("click", ev => {
       const b = ev.target.closest("[data-av]"); if (!b) return;
+      if (b.dataset.av === "personalizar" || b.dataset.av === "volver") {
+        const colores = b.dataset.av === "personalizar";
+        f.querySelector(".ee-av-main").hidden = colores;
+        f.querySelector(".ee-colores").hidden = !colores;
+        if (!colores) f.querySelector("#avNombre").focus();
+        return;
+      }
       if (b.dataset.av === "azar") { borrador = { ...avatarAleatorio(Date.now()), nombre: borrador.nombre }; sincronizar(); }
       if (b.dataset.av === "reset") { borrador = { ...AVATAR_BASE, nombre: borrador.nombre }; sincronizar(); }
     });
@@ -3058,7 +3321,7 @@ function montar(raiz, opciones = {}) {
   actualizarEquipo();
   if (tienePistola) proxEnemigo = performance.now() + 1500;    // ya tenía la pistola de una sesión anterior
   ajustarLienzo();
-  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP].forEach(d => d.addEventListener("cancel", () => {}, sig));
+  [el.dlgAvatar, el.dlgLista, el.dlgAyuda, el.dlgNPC, el.dlgJP, el.dlgInv].forEach(d => d.addEventListener("cancel", () => {}, sig));
   raf = requestAnimationFrame(bucle);
   // Pista inicial
   if (leer(cfg.claveAvatar + ".visto", false) !== true) {          // la guía rápida se muestra solo la primera vez
@@ -3107,6 +3370,17 @@ function inyectarEstilos() {
   .ee-reloj > span:not(.ee-chip) { font-size:12px; color:var(--ee-muted); }
   .ee-chip { margin-top:4px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; background:rgba(255,255,255,.14); }
   .ee-chip[data-abierto="1"] { background:#1c8f55; color:#fff; } .ee-chip[data-abierto="0"] { background:#6b7a72; color:#fff; }
+  .ee-jefe { position:absolute; left:50%; bottom:64px; transform:translateX(-50%); width:min(640px,calc(100% - 32px)); z-index:5; pointer-events:none; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .ee-jefe[hidden] { display:none; }
+  .ee-jefe-nombre { font:700 14px system-ui,sans-serif; color:#ffe9f4; text-shadow:0 1px 3px #000; letter-spacing:.06em; text-transform:uppercase; }
+  .ee-jefe-barra { width:100%; height:22px; background:rgba(0,0,0,.6); border:2px solid #ff3fb4; border-radius:999px; overflow:hidden; box-shadow:0 0 16px rgba(255,63,180,.5); }
+  .ee-jefe-relleno { height:100%; width:100%; background:linear-gradient(90deg,#ff3fb4,#ff8bd6); transition:width .2s; }
+  .ee-vida-fila { display:flex; align-items:center; gap:10px; pointer-events:none; }
+  .ee-tp { position:relative; width:58px; height:58px; border-radius:50%; flex:0 0 auto; pointer-events:auto; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.18); box-shadow:0 6px 20px rgba(0,0,0,.22); }
+  .ee-tp[hidden] { display:none; }
+  .ee-tp::before { content:""; position:absolute; inset:6px; border-radius:50%; background:rgba(7,48,31,.95); }
+  .ee-tp-num { position:relative; font:700 15px ui-monospace,Menlo,monospace; color:var(--ee-on); }
+  .ee-tp--listo .ee-tp-num { color:#86E3AE; }
   .ee-vida { pointer-events:auto; display:flex; flex-direction:column; align-items:center; gap:4px; background:rgba(7,48,31,.9); color:var(--ee-on); border-radius:14px; padding:10px 16px; backdrop-filter:blur(6px); box-shadow:0 6px 20px rgba(0,0,0,.22); }
   .ee-vida-etq { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ee-muted); }
   .ee-vida-barra { width:140px; height:12px; border-radius:999px; background:rgba(255,255,255,.14); overflow:hidden; }
@@ -3195,6 +3469,14 @@ function inyectarEstilos() {
   .ee-av { display:grid; grid-template-columns:230px 1fr; gap:18px; margin-top:12px; } @media (max-width:640px){ .ee-av { grid-template-columns:1fr; } }
   .ee-av-prev canvas { display:block; width:100%; max-width:230px; margin:0 auto; border-radius:14px; border:1.5px solid var(--ee-bd); background:#e3ece5; }
   .ee-av-prev .ee-fila-botones { justify-content:center; }
+  .ee-acc { margin-top:14px; } .ee-acc-tit { margin:0 0 8px; font-size:14px; }
+  .ee-acc-cab { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+  .ee-acc-cab .ee-acc-tit { margin:0; }
+  .ee-av-prev, .ee-av-campos { min-width:0; }
+  .ee-acc-cuadros { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+  .ee-acc-cuadro { aspect-ratio:1; border:2px dashed var(--ee-bd); border-radius:10px; }
+  .ee-acc-cuadro--tiene { overflow:hidden; word-break:break-word; hyphens:auto; font:inherit; font-size:9px; font-weight:600; line-height:1.15; padding:4px; cursor:pointer; color:var(--ee-txt); background:transparent; border-style:solid; }
+  .ee-acc-cuadro--on { border-color:var(--ee-txt); background:rgba(0,0,0,.08); }
   .ee-fs { margin:12px 0 0; padding:0; border:0; } .ee-fs legend { padding:0; margin-bottom:6px; font-size:14px; font-weight:600; }
   .ee-sw { display:flex; flex-wrap:wrap; gap:8px; }
   .ee-swatch { position:relative; display:block; width:34px; height:34px; cursor:pointer; }

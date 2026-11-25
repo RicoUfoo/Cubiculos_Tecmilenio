@@ -76,7 +76,7 @@ const Mensajes = {
   reservaCancelada: (cub, ini, fin) => `Reserva cancelada: ${cub}, de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}.`,
   etiquetaTuya: () => "Tu reserva",
   botonCancelarReserva: () => "Cancelar reserva",
-  cancelarAriaLabel: (nombre, rango) => `Cancelar reserva de ${nombre}, ${rango}`,   // T45: empieza con el texto visible del botón ("Cancelar reserva")
+  cancelarAriaLabel: (nombre, rango) => `Cancelar la reserva de ${nombre}, ${rango}`,
   confirmarEyebrow: () => "Confirmar",
   confirmarCancelarTitulo: () => "¿Cancelar esta reserva?",
   confirmarCancelarAviso: () => "El horario quedará libre para que otra persona lo aparte.",
@@ -106,12 +106,6 @@ const Mensajes = {
   deshacerChoque: lista => `Ya no se puede deshacer: ese horario ahora choca con ${lista}.`,
   deshacerChoqueGrupo: (nombre, lista) => `Ya no se puede deshacer: "${nombre}" ya tiene reservado el ${lista}.`,
   deshacerFallo: () => "No se pudo guardar la reserva restaurada.",
-
-  // Teclado y lectores de pantalla (T44 / T45)
-  // Horas "habladas": un lector lee "08:00 – 09:00" como "ocho cero cero menos nueve cero cero".
-  rangoHablado: (ini, fin) => `de ${Mensajes.hora(ini)} a ${Mensajes.hora(fin)}`,
-  nombreCampo: { nombre: "Nombre del grupo", personas: "Número de personas", inicio: "Hora de inicio", duracion: "Duración" },
-  camposConError: nombres => `Hay ${nombres.length} campos con error: ${nombres.join(", ")}.`,
 };
 
 /* ===== 1c. Identidad del dispositivo (T36) ===== */
@@ -633,24 +627,10 @@ const Almacen = {
 
 /* ===== T43. Gestión de Tema (Oscuro / Claro) ===== */
 const GestionTema = {
-  // Tema efectivo: el que eligió la persona o, si no eligió ninguno, el del sistema
-  esOscuro() {
-    const manual = document.documentElement.dataset.tema;
-    if (manual) return manual === "dark";
-    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  },
-
-  // T45: el botón es un interruptor: aria-pressed le dice al lector de pantalla si el tema oscuro está activo
-  // (antes solo decía "cambiar tema" y no se sabía en qué estado estaba)
-  sincronizarBoton() {
-    const btn = document.getElementById("btnTema");
-    if (btn) btn.setAttribute("aria-pressed", String(this.esOscuro()));
-  },
-
   iniciar() {
     const btn = document.getElementById("btnTema");
     if (!btn) return;
-
+    
     // Leer preferencia guardada o usar la del sistema
     let temaGuardado = null;
     try { temaGuardado = localStorage.getItem(Config.CLAVE_TEMA); } catch (e) {}
@@ -665,14 +645,13 @@ const GestionTema = {
       const nuevo = this.esOscuro() ? "light" : "dark";
       document.documentElement.dataset.tema = nuevo;
       try { localStorage.setItem(Config.CLAVE_TEMA, nuevo); } catch (e) {}
-      this.sincronizarBoton();
       this.sincronizarBarra();
     });
-
-    // Si no hay elección manual y el sistema cambia de tema, el estado del botón se mantiene al día
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    if (mq.addEventListener) mq.addEventListener("change", () => this.sincronizarBoton());
-    this.sincronizarBoton();
+  },
+  esOscuro() {
+    const actual = document.documentElement.dataset.tema;
+    if (actual) return actual === "dark";
+    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
   },
   // T48: con tema manual, la barra del navegador (theme-color) debe seguir al tema elegido, no al del sistema
   sincronizarBarra() {
@@ -723,17 +702,6 @@ const Vista = {
   _resaltar: null,
   _timerResaltar: null,
   _timerAviso: null,
-  // T45: anuncio SOLO para lectores de pantalla (región viva oculta, no se ve en pantalla).
-  // Sirve para resúmenes que ya se ven de otra forma (p. ej. cuántos campos del formulario tienen error).
-  // Lo que además debe verse (éxito, deshacer) usa avisar().
-  _timerAnuncio: null,
-  anunciar(texto) {
-    const el = this.$("anuncios");
-    if (!el) return;
-    clearTimeout(this._timerAnuncio);
-    el.textContent = "";   // vaciar primero: así se anuncia aunque el texto se repita
-    this._timerAnuncio = setTimeout(() => { el.textContent = texto; }, 60);
-  },
   avisar(texto) {
     const el = this.$("aviso");
     if (!el) return;
@@ -775,7 +743,8 @@ const Vista = {
   },
   renderPlano() {
     const html = Modelo.cubiculos().map(c => `
-      <button class="booth" type="button" data-cub="${c.id}" aria-haspopup="dialog">
+      <button class="booth" type="button" data-cub="${c.id}" aria-haspopup="dialog"
+              aria-label="${c.nombre}, capacidad ${c.capacidad} personas">
         <small>Cubículo</small>
         <b>${c.numero}</b>
         <span>Hasta ${c.capacidad} personas</span>
@@ -800,8 +769,7 @@ const Vista = {
       const texto = this.textoEstado(e);
       boton.dataset.estado = e.estado;
       boton.querySelector(".estado-actual").textContent = texto;
-      // T45: sin aria-label. El nombre accesible sale del texto visible de la tarjeta ("Cubículo 1 · Hasta 3 personas ·
-      // Libre · hasta las 20:00 · 0 de 12 h ocupadas hoy"), así quien dicta "clic en Hasta 3 personas" también acierta.
+      boton.setAttribute("aria-label", `${c.nombre}, capacidad ${c.capacidad} personas, ${texto}`);
     });
   },
   _firma: "",
@@ -844,25 +812,23 @@ const Vista = {
           const clases = ["slot", `slot--${estado}`];
           if (pasada) clases.push("slot--pasada");
           if (nueva) clases.push("slot--nueva");
-          const accion = pasada ? "ya pasó, no se puede reservar" : estado === "libre" ? "se puede reservar" : "ver el detalle";
+          const accion = pasada ? "ya pasó, no se puede reservar" : estado === "libre" ? "toca para reservar" : "toca para ver el detalle";
           return `
         <td>
           <button class="${clases.join(" ")}" type="button"
                   data-cub="${c.id}" data-franja="${f.id}" data-estado="${estado}"
-                  ${pasada ? 'aria-disabled="true"' : 'aria-haspopup="dialog"'} tabindex="-1"
-                  aria-label="${c.nombre}, ${Mensajes.rangoHablado(f.inicio, f.fin)}, ${estado}, ${accion}"></button>
+                  ${pasada ? 'aria-disabled="true" title="Ya pasó"' : ""}
+                  aria-label="${c.nombre}, ${f.etiqueta}, ${estado}, ${accion}"></button>
         </td>`;
         }).join("")}
       </tr>`).join("");
 
     this.$("franjas").innerHTML = `
-      <table class="tabla-franjas" aria-describedby="tablaAyuda">
+      <table class="tabla-franjas">
         <caption class="sr-only">Franjas de una hora por cubículo</caption>
         <thead><tr><th scope="col">Cubículo</th>${cabecera}</tr></thead>
         <tbody>${filas}</tbody>
       </table>`;
-
-    NavegacionFranjas.aplicar();   // T44: tras cada redibujado, una sola franja vuelve a entrar al orden de Tab
 
     const info = this.$("franjasInfo");
     if (info && franjas.length) {
@@ -899,14 +865,10 @@ const Vista = {
       }
       horas = `<span class="lt-horas" aria-hidden="true">${marcas.join("")}</span>`;
     }
-    // T45: las horas se dicen "de 11:00 a 13:00" (no "11:00 – 13:00")
-    const descripcion = bloques.length ? `Ocupado ${bloques.map(b => Mensajes.rangoHablado(b.inicio, b.fin)).join(", ")}` : "Sin reservas hoy";
-    // T45: en la tarjeta del plano la barra es decorativa (el texto "3 de 12 h ocupadas hoy" ya la resume);
-    // en el detalle sí se describe como imagen
-    const atributosPista = conHoras ? `role="img" aria-label="Línea de tiempo de hoy: ${descripcion}"` : 'aria-hidden="true"';
+    const descripcion = bloques.length ? `Ocupado de ${rangos.join(", de ")}` : "Sin reservas hoy";
     return `
       <span class="linea-tiempo${conHoras ? " linea-tiempo--grande" : ""}">
-        <span class="lt-pista" ${atributosPista}>
+        <span class="lt-pista" role="img" aria-label="Línea de tiempo de hoy: ${descripcion}">
           <span class="lt-pasado"></span>
           ${segmentos}
           <span class="lt-ahora" hidden></span>
@@ -954,14 +916,14 @@ const Vista = {
 
     this.$("plano").addEventListener("click", ev => {
       const tarjeta = ev.target.closest(".booth");
-      if (tarjeta) this.abrirDetalle(tarjeta.dataset.cub, tarjeta);
+      if (tarjeta) this.abrirDetalle(tarjeta.dataset.cub);
     });
 
     this.$("franjas").addEventListener("click", ev => {
       const slot = ev.target.closest(".slot");
       if (!slot || slot.getAttribute("aria-disabled") === "true") return;
       const franja = Modelo.franjaPorId(slot.dataset.franja);
-      this.abrirDetalle(slot.dataset.cub, slot);
+      this.abrirDetalle(slot.dataset.cub);
       if (franja && slot.dataset.estado === "libre") FormReserva.abrir({ inicio: franja.inicio });
     });
 
@@ -971,26 +933,13 @@ const Vista = {
     dlg.addEventListener("close", () => {
       const aviso = this.$("aviso");
       if (aviso && aviso.parentNode === dlg) document.body.appendChild(aviso);
-      const cubId = this._detalleCub;
+      const tarjeta = document.querySelector(`.booth[data-cub="${this._detalleCub}"]`);
       this._detalleCub = null;
-      this.devolverFoco(cubId);
+      if (tarjeta) tarjeta.focus();
     });
   },
-  // T44: al cerrar el detalle el foco vuelve a QUIEN lo abrió. Si lo abrió una franja de la tabla, vuelve a esa
-  // franja (no a la tarjeta de arriba: se perdería el lugar). Como la tabla se redibuja, se guarda QUÉ era
-  // (cubículo + franja), no el elemento.
-  _origen: null,
-  devolverFoco(cubId) {
-    const o = this._origen;
-    this._origen = null;
-    const slot = o && o.franja && document.querySelector(`.slot[data-cub="${o.cub}"][data-franja="${o.franja}"]`);
-    const tarjeta = document.querySelector(`.booth[data-cub="${cubId}"]`);
-    const destino = slot || tarjeta;
-    if (destino) destino.focus();
-  },
-  abrirDetalle(cubId, origen = null) {
+  abrirDetalle(cubId) {
     const dlg = this.$("detalle");
-    if (!dlg.open) this._origen = origen ? { cub: origen.dataset.cub, franja: origen.dataset.franja || null } : null;
     this._detalleCub = cubId;
     this.renderDetalle();
     Dialogo.abrir(dlg);
@@ -1009,7 +958,6 @@ const Vista = {
 
     const itemsAgenda = agenda.map(b => {
       const rango = `${pad(b.inicio)}:00 – ${pad(b.fin)}:00`;
-      const hablado = Mensajes.rangoHablado(b.inicio, b.fin);   // T45
       const quien = b.tipo === "ocupado"
         ? `<strong>Ocupado</strong>${b.reserva.nombre ? ` · ${this.esc(b.reserva.nombre)}` : ""}${Identidad.esMia(b.reserva) ? ` <span class="agenda-tuya">${Mensajes.etiquetaTuya()}</span>` : ""}`
         : `<strong>Libre</strong>`;
@@ -1018,13 +966,13 @@ const Vista = {
       const cancelable = !liberable && b.tipo === "ocupado" && Reglas.puedeCancelar(b.reserva, ahora);
       let accion = "";
       if (liberable) {
-        accion = `<button type="button" class="btn btn--chico agenda-cancelar" data-liberar="${this.esc(b.reserva.id)}" aria-label="${this.esc(Mensajes.liberarAriaLabel(b.reserva.nombre, hablado))}">${Mensajes.botonLiberar()}</button>`;
+        accion = `<button type="button" class="btn btn--chico agenda-cancelar" data-liberar="${this.esc(b.reserva.id)}" aria-label="${this.esc(Mensajes.liberarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonLiberar()}</button>`;
       } else if (cancelable) {
-        accion = `<button type="button" class="btn btn--sec btn--chico agenda-cancelar" data-cancelar="${this.esc(b.reserva.id)}" aria-label="${this.esc(Mensajes.cancelarAriaLabel(b.reserva.nombre, hablado))}">${Mensajes.botonCancelarReserva()}</button>`;
+        accion = `<button type="button" class="btn btn--sec btn--chico agenda-cancelar" data-cancelar="${this.esc(b.reserva.id)}" aria-label="${this.esc(Mensajes.cancelarAriaLabel(b.reserva.nombre, rango))}">${Mensajes.botonCancelarReserva()}</button>`;
       }
       return `
         <li class="agenda-item agenda-item--${b.tipo}${nueva ? " agenda-item--nueva" : ""}" data-inicio="${b.inicio}" data-fin="${b.fin}">
-          <span class="agenda-hora"><span aria-hidden="true">${rango}</span><span class="sr-only">${hablado}</span></span>
+          <span class="agenda-hora">${rango}</span>
           <span class="agenda-que">${quien}</span>
           <span class="agenda-ahora" hidden>Ahora</span>
           ${accion}
@@ -1192,9 +1140,6 @@ const FormReserva = {
     const primero = ["nombre", "personas", "inicio", "duracion"].find(k => errores[k]);
     const destino = primero ? this.$(this._ids[primero]) : this.$("reservaTitulo");
     if (destino) destino.focus();
-    // T45: el foco va al primer error; con varios, un resumen hablado dice cuáles son (no se ve: los errores ya se ven en cada campo)
-    const conError = ["nombre", "personas", "inicio", "duracion"].filter(k => errores[k]);
-    if (conError.length > 1) Vista.anunciar(Mensajes.camposConError(conError.map(k => Mensajes.nombreCampo[k])));
   },
   volver() {
     this.reiniciar();
@@ -1490,17 +1435,6 @@ const Deshacer = {
     el.addEventListener("focusout", () => this.reanudar());
     const dlg = this.$("detalle");
     if (dlg) dlg.addEventListener("close", () => this.ubicar());
-    // T44: atajo de teclado Ctrl+Z (⌘+Z en Mac) mientras el aviso de deshacer está visible, para no tener que
-    // llegar con Tab hasta el botón antes de que se acabe el tiempo. No actúa si el foco está en un campo
-    // (ahí Ctrl+Z deshace lo que se está escribiendo).
-    document.addEventListener("keydown", ev => {
-      if (!this._pendiente || el.hidden) return;
-      if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey || ev.key.toLowerCase() !== "z") return;
-      const t = ev.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      ev.preventDefault();
-      this.ejecutar();
-    });
   },
   ubicar() {
     const el = this.$("avisoDeshacer");
@@ -1515,7 +1449,7 @@ const Deshacer = {
   },
   html(texto, conBoton) {
     return `<span class="aviso-texto">${Vista.esc(texto)}</span>` + (conBoton
-      ? `<button type="button" class="aviso-boton" data-deshacer aria-keyshortcuts="Control+Z Meta+Z" aria-label="${Vista.esc(Mensajes.deshacerAriaLabel())}">${Mensajes.botonDeshacer()}</button>`
+      ? `<button type="button" class="aviso-boton" data-deshacer aria-label="${Vista.esc(Mensajes.deshacerAriaLabel())}">${Mensajes.botonDeshacer()}</button>`
       : "");
   },
   programar() {
@@ -1625,71 +1559,6 @@ const LiberarCubiculo = {
   },
 };
 
-// T44. Navegación con flechas en la tabla de franjas //
-// La tabla tiene 5 × 12 = 60 botones: con solo Tab serían 60 paradas para cruzarla. Se usa "tabindex itinerante"
-// (roving tabindex, patrón de cuadrícula de WAI-ARIA): solo UNA franja está en el orden de Tab (tabindex="0") y las
-// demás se alcanzan con las flechas. Tab entra a la tabla y sale de ella en una parada cada vez.
-//   ← →  franja anterior / siguiente de la fila        ↑ ↓  el mismo horario en el cubículo de arriba / abajo
-//   Inicio / Fin  primera / última de la fila          Ctrl+Inicio / Ctrl+Fin  primera / última de toda la tabla
-// Enter o Espacio activan la franja (son botones). No dan la vuelta en los bordes. La tabla se redibuja cada
-// minuto y cuando cambian las reservas, así que la franja "actual" se guarda como { cub, franja }, no como elemento.
-const NavegacionFranjas = {
-  _actual: null,
-
-  iniciar() {
-    const caja = document.getElementById("franjas");
-    if (!caja) return;
-    caja.addEventListener("focusin", ev => {
-      const s = ev.target.closest && ev.target.closest(".slot");
-      if (s) this.fijar(s);
-    });
-    caja.addEventListener("keydown", ev => this.alTeclear(ev));
-  },
-
-  celdas() { return [...document.querySelectorAll("#franjas .slot")]; },
-  filas() { return [...document.querySelectorAll("#franjas tbody tr")].map(tr => [...tr.querySelectorAll(".slot")]); },
-
-  // Deja UNA sola franja con tabindex="0" y recuerda cuál es
-  fijar(slot) {
-    this._actual = { cub: slot.dataset.cub, franja: slot.dataset.franja };
-    this.celdas().forEach(s => s.setAttribute("tabindex", s === slot ? "0" : "-1"));
-  },
-
-  // Se llama tras cada redibujado: la franja recordada (o, la primera vez, la hora en curso) vuelve a entrar al orden de Tab
-  aplicar() {
-    const celdas = this.celdas();
-    if (!celdas.length) return;
-    let slot = this._actual && celdas.find(s => s.dataset.cub === this._actual.cub && s.dataset.franja === this._actual.franja);
-    if (!slot) {
-      const f = Modelo.franjaActual();
-      slot = (f && celdas.find(s => s.dataset.franja === f.id)) || celdas[0];
-    }
-    celdas.forEach(s => s.setAttribute("tabindex", s === slot ? "0" : "-1"));
-  },
-
-  alTeclear(ev) {
-    const s = ev.target.closest && ev.target.closest(".slot");
-    if (!s || ev.altKey || ev.shiftKey || ev.metaKey) return;
-    const filas = this.filas();
-    const fi = filas.findIndex(f => f.includes(s));
-    if (fi < 0) return;
-    const ci = filas[fi].indexOf(s);
-    const ultCol = filas[fi].length - 1, ultFila = filas.length - 1;
-    let destino;
-    switch (ev.key) {
-      case "ArrowRight": destino = filas[fi][Math.min(ci + 1, ultCol)]; break;
-      case "ArrowLeft":  destino = filas[fi][Math.max(ci - 1, 0)]; break;
-      case "ArrowDown":  destino = filas[Math.min(fi + 1, ultFila)][ci]; break;
-      case "ArrowUp":    destino = filas[Math.max(fi - 1, 0)][ci]; break;
-      case "Home":       destino = ev.ctrlKey ? filas[0][0] : filas[fi][0]; break;
-      case "End":        destino = ev.ctrlKey ? filas[ultFila][ultCol] : filas[fi][ultCol]; break;
-      default: return;
-    }
-    ev.preventDefault();   // que las flechas no desplacen la página
-    if (destino && destino !== s) destino.focus();
-  },
-};
-
 /* ===== 5. App: punto de entrada ===== */
 const App = {
   iniciar() {
@@ -1706,7 +1575,6 @@ const App = {
     CancelarReserva.iniciar();
     LiberarCubiculo.iniciar();
     Deshacer.iniciar();
-    NavegacionFranjas.iniciar();   // T44
     Sincronizacion.alCambiar(cambio => { if (cambio.origen !== "almacen" && !cambio.yaGuardado) Almacen.guardar(); });
     Sincronizacion.alCambiar(() => { Vista.limpiarHuerfanos(); Confirmacion.revisar(); Deshacer.revisar(); });
     Sincronizacion.alCambiar(() => Vista.refrescar(true));
