@@ -517,7 +517,7 @@ function montar(raiz, opciones = {}) {
 
   /* ---------- 5.4 Estado de UI y entrada ---------- */
   const modo = "2d";                                 // solo vista 2D en planta
-  const zoomBase = () => 1;
+  const zoomBase = () => 1.35;                       // vista inicial un poco más grande que antes (1)
   let zoom = zoomBase();
   let avatar = sanearAvatar(leer(cfg.claveAvatar, null));
   /* ----- Sistema de vida: empieza siempre con el máximo (100) al abrir el mapa ----- */
@@ -728,7 +728,7 @@ function montar(raiz, opciones = {}) {
     let golpeo = null, x = jug.x, y = jug.y;
     for (let d = paso; d <= alcance; d += paso) {
       x = jug.x + jug.apX * d; y = jug.y + jug.apY * d;
-      if (x < 0.1 || y < 0.1 || x > W - 0.1 || y > H - 0.1 || colisiona(x, y, 0.06)) { golpeo = { x, y }; break; }
+      if (fueraDeZona(x, y, 0.1) || colisiona(x, y, 0.06)) { golpeo = { x, y }; break; }
       let tocado = false;
       for (const en of enemigos) {
         if (Math.hypot(x - en.x, y - en.y) < (en.radio || 0.5)) {
@@ -847,7 +847,7 @@ function montar(raiz, opciones = {}) {
     let golpeo = null, x = jug.x, y = jug.y;
     for (let d = paso; d <= alcance; d += paso) {
       x = jug.x + jug.apX * d; y = jug.y + jug.apY * d;
-      if (x < 0.1 || y < 0.1 || x > W - 0.1 || y > H - 0.1 || colisiona(x, y, 0.08)) { golpeo = { x, y }; break; }
+      if (fueraDeZona(x, y, 0.1) || colisiona(x, y, 0.08)) { golpeo = { x, y }; break; }
       let tocado = false;
       for (const en of enemigos) {
         if (Math.hypot(x - en.x, y - en.y) < (en.radio || 0.55)) {
@@ -916,7 +916,7 @@ function montar(raiz, opciones = {}) {
     let x = jug.x, y = jug.y, fin = { x: jug.x + jug.apX * alcance, y: jug.y + jug.apY * alcance };
     for (let d = paso; d <= alcance; d += paso) {
       x = jug.x + jug.apX * d; y = jug.y + jug.apY * d;
-      if (x < 0.05 || y < 0.05 || x > W - 0.05 || y > H - 0.05) { fin = { x, y }; break; }  // borde del mapa: el único límite
+      if (fueraDeZona(x, y, 0.05)) { fin = { x, y }; break; }  // borde del mapa: el único límite
       for (const en of enemigos) {
         if (!golpeadosEnemigos.has(en) && Math.hypot(x - en.x, y - en.y) < (en.radio || 0.6)) {
           golpeadosEnemigos.add(en);
@@ -950,7 +950,7 @@ function montar(raiz, opciones = {}) {
     for (let i = balas.length - 1; i >= 0; i--) {
       const b = balas[i];
       b.x += b.dx * b.velBala * dt; b.y += b.dy * b.velBala * dt;
-      let quitar = ahora - b.nace > 900 || b.x < 0.1 || b.y < 0.1 || b.x > W - 0.1 || b.y > H - 0.1;
+      let quitar = ahora - b.nace > 900 || fueraDeZona(b.x, b.y, 0.1);
       if (!quitar && colisiona(b.x, b.y, 0.06)) { quitar = true; impactos.push({ x: b.x, y: b.y, t: ahora, col: "#cfd3d6" }); }
       if (!quitar) {
         for (const en of enemigos) {
@@ -1806,7 +1806,7 @@ function montar(raiz, opciones = {}) {
      =================================================================================== */
   const K = 1.5;                                          // escala del plano
   const FY = 120;                                         // el primer piso va debajo del mundo original
-  const PW = 32 * K, PH = 34 * K;                         // tamaño del primer piso en el mundo
+  const PW = 32 * K, PH = 42 * K;                         // tamaño del primer piso en el mundo (PH crece para dar más área a la explanada)
   const FYS = FY + PH + 20;                               // el sótano va más abajo, lejos de todo lo demás
   const SOTANO = { x0: 0, y0: FYS, x1: 48, y1: FYS + 30 };          // sala de estudio (con la rola)
   const FYS2 = FYS + 40;
@@ -1825,15 +1825,18 @@ function montar(raiz, opciones = {}) {
     zona: [0.9, FY + 24.4, 4.0, FY + 30.6], ancla: [2.6, FY + 27.6], alHablar: () => empezarTransicion("lobby") };
   const BAJADA2 = { id: "bajada-2", nombre: "al lobby", etiquetaAccion: "Bajar",
     zona: [0.9, FY + 31.0, 4.0, FY + 36.5], ancla: [2.6, FY + 33.6], alHablar: () => empezarTransicion("lobby") };
-  const BAJAR_SOTANO = { id: "bajar-sotano", nombre: "a la sala de estudio", etiquetaAccion: "Bajar",
-    zona: [21.5, FY + 48.0, 34.5, FY + PH], ancla: [LLEGADA_PISO1.x, LLEGADA_PISO1.y], alHablar: () => empezarTransicion("salaEstudio") };
+  const BAJAR_SOTANO = { id: "bajar-sotano", nombre: "a la planta baja", etiquetaAccion: "Bajar",
+    zona: [21.5, FY + 48.0, 34.5, FY + PH], ancla: [LLEGADA_PISO1.x, LLEGADA_PISO1.y], alHablar: () => empezarTransicion("lobby") };
   const SUBIR_SOTANO = { id: "subir-desde-sotano", nombre: "al primer piso", etiquetaAccion: "Subir",
     zona: [35, FYS + 6.5, 47, FYS + 11], ancla: [41, FYS + 8.6], alHablar: () => empezarTransicion("primerPiso") };
   const BAJAR_MENSAJERIA = { id: "bajar-mensajeria", nombre: "a Mensajería Hora Vive", etiquetaAccion: "Bajar",
     zona: [41.3, FY + 31.4 * K, 45.0, FY + 33.2 * K], ancla: [43.0, FY + 32.4 * K], alHablar: () => empezarTransicion("sotano") };
   const SUBIR_SOTANO2 = { id: "subir-desde-sotano2", nombre: "al primer piso", etiquetaAccion: "Subir",
     zona: [3, FYS2 + 6.5, 15, FYS2 + 11], ancla: [9, FYS2 + 8.6], alHablar: () => empezarTransicion("salonAbajo") };
-  const INTERACTIVOS_ESCALERA = [SUBIR_LOBBY, BAJADA1, BAJADA2, BAJAR_SOTANO, SUBIR_SOTANO, BAJAR_MENSAJERIA, SUBIR_SOTANO2];
+  // Escaleras de la explanada: por el lado sur (por donde llegas) te llevan a la planta baja; por el norte, a la sala de estudio
+  const BAJADA_EXPLANADA = { id: "bajada-explanada", nombre: "a la sala de estudio", etiquetaAccion: "Bajar",
+    zona: [21.5, FY + 39.5, 34.5, FY + 42.8], ancla: [28.0, FY + 41.2], alHablar: () => empezarTransicion("salaEstudio") };
+  const INTERACTIVOS_ESCALERA = [SUBIR_LOBBY, BAJADA1, BAJADA2, BAJAR_SOTANO, SUBIR_SOTANO, BAJAR_MENSAJERIA, SUBIR_SOTANO2, BAJADA_EXPLANADA];
   // Estudiantes que caminan en bucle por los pasillos del primer piso (rutas en coordenadas del mundo)
   const rutaDe = pts => pts.map(([x, y]) => PL(x, y));
   const CAMINANTES_P1 = [
@@ -2079,6 +2082,7 @@ function montar(raiz, opciones = {}) {
       const [sx, sy] = ladoXY(l, x, y, r + 0.32);
       agregar(sx, sy, 0.9, () => silla(sx, sy, l, cols[i]));
       seats.push([sx, sy, l]);
+      if (solido) solidos.push([sx - 0.22, sy - 0.22, sx + 0.22, sy + 0.22]);
     });
     agregar(x, y, 0.8, () => { cil(x, y, 0.08, 0, 0.7, "#2b2d30"); cil(x, y, 0.34, 0, 0.04, "#2b2d30"); cil(x, y, r, 0.7, 0.06, "#c98f52"); });
     if (solido) solidos.push([x - r * 0.9, y - r * 0.9, x + r * 0.9, y + r * 0.9]);
@@ -2357,6 +2361,11 @@ function montar(raiz, opciones = {}) {
     if (y >= SOTANO.y0 - 1) return [SOTANO.x0, SOTANO.y0, SOTANO.x1, SOTANO.y1];
     if (y >= FY - 1) return [0, FY, PW, FY + PH];
     return [0, 0, W, mundo.alturaBase || H];
+  }
+  // Verdadero si (x,y) quedó fuera de la zona que le toca a ese punto (no del alto global del lobby)
+  function fueraDeZona(x, y, m) {
+    const [lx0, ly0, lx1, ly1] = limitesEn(y);
+    return x < lx0 + m || y < ly0 + m || x > lx1 - m || y > ly1 - m;
   }
   function colisiona(x, y, r = RJ) {
     const [lx0, ly0, lx1, ly1] = limitesEn(y);
