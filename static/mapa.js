@@ -1630,62 +1630,47 @@ function montar(raiz, opciones = {}) {
       }
     });
   }
+  // Sprites del Gran Hocico: hoja Sprites/gran-hocico.png (fondo transparente). Cada cuadro es [x, y, ancho, alto] en la hoja.
+  const HOCICO_IMG = new Image();
+  HOCICO_IMG.src = new URL("Sprites/gran-hocico.png", document.baseURI).href;
+  const HOCICO_CUADROS = {"idle":[[25,15,275,181],[300,15,292,181],[607,15,277,181],[885,15,284,181],[1183,15,260,181]],"andar":[[15,219,263,169],[281,219,249,167],[530,219,245,168],[775,223,245,165],[1021,227,245,161],[1277,234,229,154]],"aviso":[[13,418,263,161],[276,418,272,161],[548,430,275,153],[845,418,291,164],[1149,418,365,165]],"ataque":[[15,612,269,224],[285,613,487,223],[779,612,216,218],[995,622,305,210],[1300,612,236,225]],"aturdido":[[0,861,305,146],[305,876,300,131],[605,878,265,129],[870,861,285,146],[1155,897,191,110],[1370,951,155,56]]};
+  const HOCICO_ESCALA = 0.5;
+  const HOCICO_ATAQUE_CUADRO = { radial: 0, relampagos: 0, abanico: 1, lluvia: 1, espiral: 2, charcos: 3, onda: 4 };
+  function cuadroHocico(en) {
+    const F = HOCICO_CUADROS, bob = en.bob || 0;
+    if (en.estado === "aturdido") return F.aturdido[Math.floor(bob * 2) % F.aturdido.length];
+    if (en.estado === "aviso" || (en.estado === "ataque" && en.ataqueActual === "embestida")) return F.aviso[Math.floor(bob * 6) % F.aviso.length];
+    if (en.estado === "ataque") return F.ataque[HOCICO_ATAQUE_CUADRO[en.ataqueActual] ?? 0];
+    if (en.mov) return F.andar[Math.floor((en.paso || 0) / 1.2) % F.andar.length];
+    return F.idle[Math.floor(bob * 3) % F.idle.length];
+  }
   function dibujarGranHocico(en) {
     const f = granHocicoFase(en);
     const [sx, sy] = P(en.x, en.y, 0);
-    const salto = en.mov ? Math.abs(Math.sin(en.paso)) * 5 : Math.abs(Math.sin((en.bob || 0) * 2)) * 2;
-    const cx = sx, cy = sy - 58 - salto * 1.3;
-    c.save();
-    c.translate(cx, cy); c.scale(1.3, 1.3); c.translate(-cx, -cy);
-    c.beginPath(); c.ellipse(sx, sy - 12, 50, 18, 0, 0, TAU); c.fillStyle = "rgba(0,0,0,.28)"; c.fill();
+    const salto = en.mov ? Math.abs(Math.sin(en.paso || 0)) * 4 : Math.abs(Math.sin((en.bob || 0) * 2)) * 1.5;
+    const [fx, fy, fw, fh] = cuadroHocico(en);
+    const w = fw * HOCICO_ESCALA, h = fh * HOCICO_ESCALA, pies = sy - salto;
+    c.beginPath(); c.ellipse(sx, sy - 6, w * 0.34, 9, 0, 0, TAU); c.fillStyle = "rgba(0,0,0,.28)"; c.fill();
     if (f === 3) {
-      const gl = c.createRadialGradient(cx, cy, 20, cx, cy, 80);
+      const gl = c.createRadialGradient(sx, pies - h / 2, 10, sx, pies - h / 2, w * 0.7);
       gl.addColorStop(0, "rgba(255,60,60,.28)"); gl.addColorStop(1, "rgba(255,60,60,0)");
-      c.fillStyle = gl; c.beginPath(); c.arc(cx, cy, 80, 0, TAU); c.fill();
+      c.fillStyle = gl; c.beginPath(); c.arc(sx, pies - h / 2, w * 0.7, 0, TAU); c.fill();
     }
-    const paso = en.mov ? Math.sin(en.paso) * 4 : 0;
-    [-26, -10, 10, 26].forEach((dx, i) => rr(c, cx + dx - 7, cy + 24 + (i % 2 ? paso : -paso), 14, 20, 6, "#c96f86"));
-    [-1, 1].forEach(lado => {
-      c.beginPath();
-      c.moveTo(cx + lado * 30, cy - 20);
-      c.quadraticCurveTo(cx + lado * 66, cy - 34, cx + lado * 56, cy + 6);
-      c.quadraticCurveTo(cx + lado * 44, cy - 4, cx + lado * 30, cy - 4);
-      c.closePath(); c.fillStyle = "#e58aa0"; c.fill(); c.lineWidth = 2; c.strokeStyle = "#7a3346"; c.stroke();
-    });
-    const cuerpo = c.createRadialGradient(cx - 12, cy - 12, 6, cx, cy, 48);
-    cuerpo.addColorStop(0, "#ffd3dc"); cuerpo.addColorStop(0.55, "#f29bb0"); cuerpo.addColorStop(1, "#c4637f");
-    c.beginPath(); c.ellipse(cx, cy, 46, 34, 0, 0, TAU); c.fillStyle = cuerpo; c.fill();
-    c.lineWidth = 2; c.strokeStyle = "#7a3346"; c.stroke();
-    c.beginPath(); c.ellipse(cx + 20, cy - 16, 9, 6, 0.4, 0, TAU); c.fillStyle = "rgba(160,60,90,.25)"; c.fill();
-    c.beginPath(); c.ellipse(cx - 4, cy + 12, 24, 12, 0, 0, TAU); c.fillStyle = "rgba(255,255,255,.18)"; c.fill();
-    const ang = Math.atan2(jug.y - en.y, jug.x - en.x), lx = Math.cos(ang) * 2.5, ly = Math.sin(ang) * 1.5;
-    [-16, 16].forEach(dx => {
-      c.beginPath(); c.ellipse(cx + dx + lx, cy - 8 + ly, 4.4, 5.4, 0, 0, TAU); c.fillStyle = "#1a0d12"; c.fill();
-      c.beginPath(); c.arc(cx + dx + lx - 1.4, cy - 10 + ly, 1.4, 0, TAU); c.fillStyle = "#fff"; c.fill();
-    });
-    if (f >= 2) {
-      c.strokeStyle = "#5a2233"; c.lineWidth = 2.4; c.beginPath();
-      c.moveTo(cx - 26, cy - 18); c.lineTo(cx - 8, cy - 13); c.moveTo(cx + 26, cy - 18); c.lineTo(cx + 8, cy - 13); c.stroke();
+    if (HOCICO_IMG.complete && HOCICO_IMG.naturalWidth) {
+      c.save();
+      c.translate(sx, pies);
+      if (jug.x > en.x) c.scale(-1, 1);   // la hoja mira a la izquierda; se voltea hacia el jugador
+      c.drawImage(HOCICO_IMG, fx, fy, fw, fh, -w / 2, -h, w, h);
+      c.restore();
     }
-    c.beginPath(); c.ellipse(cx, cy + 6, 18, 13, 0, 0, TAU); c.fillStyle = "#ffb3c3"; c.fill();
-    c.strokeStyle = "#7a3346"; c.lineWidth = 1.8; c.stroke();
-    [-6, 6].forEach(dx => { c.beginPath(); c.ellipse(cx + dx, cy + 6, 2.2, 3, 0, 0, TAU); c.fillStyle = "#7a3346"; c.fill(); });
-    const grita = en.estado === "ataque" && ["radial", "lluvia", "espiral", "relampagos"].includes(en.ataqueActual);
-    if (grita) { c.beginPath(); c.ellipse(cx, cy + 22, 8, 6, 0, 0, TAU); c.fillStyle = "#5a1a2a"; c.fill(); }
-    else { c.beginPath(); c.arc(cx, cy + 16, 7, 0.15 * Math.PI, 0.85 * Math.PI); c.strokeStyle = "#7a3346"; c.lineWidth = 1.6; c.stroke(); }
-    [-1, 1].forEach(lado => {
-      c.beginPath(); c.moveTo(cx + lado * 9, cy + 14); c.lineTo(cx + lado * 12, cy + 25); c.lineTo(cx + lado * 4, cy + 17); c.closePath();
-      c.fillStyle = "#fffaf0"; c.fill(); c.lineWidth = 0.8; c.strokeStyle = "#7a3346"; c.stroke();
-    });
-    c.restore();
-    // Barra de vida y nombre (fuera de la escala)
-    const wB = 130, pct = acotar(en.hp / en.hpMax, 0, 1), yB = cy - 84;
-    rr(c, cx - wB / 2, yB, wB, 9, 3, "rgba(0,0,0,.5)");
-    rr(c, cx - wB / 2, yB, wB * pct, 9, 3, pct > 0.4 ? "#6ee07a" : "#e5534b");
+    // Barra de vida y nombre (encima del sprite)
+    const wB = 130, pct = acotar(en.hp / en.hpMax, 0, 1), yB = pies - h - 14;
+    rr(c, sx - wB / 2, yB, wB, 9, 3, "rgba(0,0,0,.5)");
+    rr(c, sx - wB / 2, yB, wB * pct, 9, 3, pct > 0.4 ? "#6ee07a" : "#e5534b");
     c.font = "700 13px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
-    const txt = "Gran Hocico · Jefe final", w = c.measureText(txt).width + 16;
-    rr(c, cx - w / 2, yB - 22, w, 17, 8, "rgba(90,30,50,.9)");
-    c.fillStyle = "#ffe9ef"; c.fillText(txt, cx, yB - 13.5);
+    const txt = "Gran Hocico · Jefe final", tw = c.measureText(txt).width + 16;
+    rr(c, sx - tw / 2, yB - 22, tw, 17, 8, "rgba(90,30,50,.9)");
+    c.fillStyle = "#ffe9ef"; c.fillText(txt, sx, yB - 13.5);
   }
   function dibujarVerity() {
     const [px, py] = P(verity.x, verity.y, 1.1 + Math.sin(verity.bob) * 0.12);
