@@ -2,7 +2,7 @@
    MAPA EXPLORABLE · Sala de estudio
    -------------------------------------------------------------------------------------
    Archivo único y sin dependencias. Muestra una sala (basada en fotos reales) en vista
-   isométrica 3D o en planta 2D, donde te desplazas con un avatar configurable y puedes
+   2D en planta, donde te desplazas con un avatar configurable y puedes
    reservar mesas, bancas y cuartos.
 
    CÓMO REUTILIZARLO EN OTRO PROYECTO
@@ -14,7 +14,7 @@
 
    OPCIONES (todas opcionales)
      titulo, subtitulo, zona ("America/Monterrey"), locale ("es-MX"), abre (8), cierra (20),
-     maxHoras (2), ejemplos (true: ocupación de ejemplo), claveReservas / claveAvatar / claveVista
+     maxHoras (2), ejemplos (true: ocupación de ejemplo), claveReservas / claveAvatar
      (claves de localStorage), mundo, ahora (función que devuelve un Date).
 
    PARÁMETRO DE URL PARA PROBAR EL HORARIO
@@ -22,7 +22,7 @@
 
    API DEVUELTA POR montar():
      abrir(id), cerrarPanel(), irA(id), estado(id), reservar({espacio,nombre,personas,inicio,duracion}),
-     cancelar(id), reservas(), jugador(), vista("iso"|"2d"), destruir()
+     cancelar(id), reservas(), jugador(), destruir()
    ===================================================================================== */
 (function (global) {
 "use strict";
@@ -41,8 +41,11 @@ const BASE = {
   ejemplos: true,
   claveReservas: "espacio.reservas.v1",
   claveAvatar: "espacio.avatar.v1",
-  claveVista: "espacio.vista.v1",
   claveEjemplos: "espacio.ejemplos.v1",
+  // Pistas ambientales: suenan en el sótano y en el primer piso (se desvanecen al entrar a una pelea de jefe)
+  musicaSalaEstudio: "Musica/coffee-shop.mp3",
+  musicaPrimerPiso: "Musica/color-your-night.mp3",
+  claveColiseo: "espacio.coliseo.v1",
   claveDispositivo: "espacio.dispositivo.v1",
   clavePistola: "espacio.pistola.v1",
   vidaMax: 100,
@@ -55,11 +58,18 @@ const BASE = {
    =================================================================================== */
 const MUNDO_TECMILENIO = {
   ancho: 32,
-  alto: 34,
+  alto: 252,
+  alturaBase: 68,                 // alto del mundo original (lobby, patio y coliseo); el primer piso va debajo, fuera de vista
   inicio: { x: 16, y: 19.6 },
   // La entrada ahora es una puerta real: separa el lobby (y < limiteLobby) del patio nuevo (y > limiteLobby)
   limiteLobby: 22,
   puertaPatio: { x: 15, ancho: 2 },
+  // Fin del patio (los enemigos del patio no pasan de aquí) y muro que lo separa del coliseo
+  patioFin: 33.2,
+  separador: { y: 34, gapX: 27, gapAncho: 2 },
+  // Coliseo: zona al sur del muro separador; se entra por el hueco-portal
+  coliseo: { x0: 0.8, y0: 34.2, x1: 31.2, y1: 66 },
+  campo: { x0: 3.6, y0: 35.6, x1: 28.4, y1: 62.2 },
 
   // Cuartos cerrados (puertas hacia el lobby, junto a la pared norte)
   cuartos: [
@@ -132,7 +142,7 @@ const MUNDO_TECMILENIO = {
 /* ===================================================================================
    3. UTILIDADES
    =================================================================================== */
-const TW = 64, TH = 32, ZH = 30, S2 = 40, RAIZ2 = Math.SQRT2, TAU = Math.PI * 2;
+const S2 = 40, TAU = Math.PI * 2;
 
 const cacheTono = new Map();
 function tono(hex, f) {
@@ -506,8 +516,8 @@ function montar(raiz, opciones = {}) {
   }
 
   /* ---------- 5.4 Estado de UI y entrada ---------- */
-  let modo = leer(cfg.claveVista, "iso") === "2d" ? "2d" : "iso";
-  const zoomBase = () => (modo === "iso" ? 0.85 : 1);
+  const modo = "2d";                                 // solo vista 2D en planta
+  const zoomBase = () => 1;
   let zoom = zoomBase();
   let avatar = sanearAvatar(leer(cfg.claveAvatar, null));
   /* ----- Sistema de vida: empieza siempre con el máximo (100) al abrir el mapa ----- */
@@ -521,10 +531,13 @@ function montar(raiz, opciones = {}) {
   let ultimoDisparo = -Infinity;
   let balas = [], impactos = [], rayos = [], blancosImpactados = 0;
   let rayoActivo = null, cargandoRayo = false, nodoCarga = null;
-  let rayoUltra = null, ultraHasta = 0, audioUltra = null;
+  let rayoUltra = null, ultraHasta = 0, audioUltra = null, rayoPListoEn = 0;
+  const COOLDOWN_RAYO_P = 180000;             // 3 minutos de recarga tras cancelar o terminar el rayo
   let quemaduras = [], ultimoQuemado = 0;
   const DURACION_QUEMADO = 10000;   // ms que tarda en borrarse del piso la marca de quemado del rayo P
   let mouseCliente = { x: innerWidth / 2, y: innerHeight / 2 };
+  let ratonFuego = null, ratonT0 = 0;          // clic izquierdo: "f" al pulsar (tap), "g" si se mantiene
+  const UMBRAL_CLIC_G = 260;                   // ms antes de pasar de disparo F a rayo G
   const blancos = [
     { id: "blanco-1", x: 29, y: 6, coolHasta: 0 },
     { id: "blanco-2", x: 22, y: 19, coolHasta: 0 },
@@ -534,12 +547,13 @@ function montar(raiz, opciones = {}) {
   const ENEMIGO_HP = 20, ENEMIGO_MAX = 4, ENEMIGO_DIST_SPAWN = 3.2;
   let enemigos = [], enemigosDerrotados = 0, proxEnemigo = Infinity, ultimoIdEnemigo = 0;
   // Jefe original del patio (no es ningún personaje con licencia): un ojo flotante gigante, se puede derrotar a tiros
-  const JEFE_HP = 420, JEFE_RADIO = 1.1;
+  const JEFE_HP = 900, JEFE_RADIO = 1.1;
   let jefeDerrotado = false;
   let panelId = null, formAbierto = false, confirmando = null, resaltado = { id: null, hasta: 0 };
   const teclas = new Set();
   let ruta = [], joy = { x: 0, y: 0 };
-  const jug = { x: mundo.inicio.x, y: mundo.inicio.y, dir: "down", paso: 0, mov: false, mx: 0, my: 1, apX: 0, apY: 1 };
+  const jug = { x: mundo.inicio.x, y: mundo.inicio.y, dir: "down", paso: 0, mov: false, mx: 0, my: 1, apX: 0, apY: 1,
+    dashHasta: 0, dashCdHasta: 0, dashDx: 0, dashDy: 0 };
   const cam = { x: 0, y: 0 };
   let estados = {};
 
@@ -559,12 +573,13 @@ function montar(raiz, opciones = {}) {
       <div class="ee-arma" data-r="armaCaja" hidden>🔫 <span data-r="armaMarcador">0</span> blancos</div>
     </header>
     <nav class="ee-controles" aria-label="Controles del mapa">
-      <button type="button" class="ee-btn" data-a="vista" aria-pressed="false"></button>
       <button type="button" class="ee-btn ee-btn--ico" data-a="menos" aria-label="Alejar">−</button>
       <button type="button" class="ee-btn ee-btn--ico" data-a="mas" aria-label="Acercar">+</button>
       <button type="button" class="ee-btn" data-a="avatar">Mi apariencia</button>
       <button type="button" class="ee-btn" data-a="lista">Espacios</button>
       <button type="button" class="ee-btn" data-a="ayuda">Ayuda</button>
+      <label class="ee-vol">Música <input type="range" min="0" max="1" step="0.05" data-r="volMusica" aria-label="Volumen de la música"></label>
+      <label class="ee-vol">Efectos <input type="range" min="0" max="1" step="0.05" data-r="volSfx" aria-label="Volumen de los efectos"></label>
     </nav>
     <div class="ee-pista" data-r="pista" hidden></div>
     <div class="ee-aviso" data-r="aviso" role="status" aria-live="polite" hidden></div>
@@ -590,7 +605,7 @@ function montar(raiz, opciones = {}) {
     panel: $("panel"), pEyebrow: $("pEyebrow"), pTitulo: $("pTitulo"), pInfo: $("pInfo"), pAccion: $("pAccion"),
     dlgAvatar: $("dlgAvatar"), dlgLista: $("dlgLista"), dlgAyuda: $("dlgAyuda"), dlgNPC: $("dlgNPC"), dlgJP: $("dlgJP"),
     vidaCaja: $("vidaCaja"), vidaFill: $("vidaFill"), vidaTexto: $("vidaTexto"),
-    armaCaja: $("armaCaja"), armaMarcador: $("armaMarcador"), btnDisparar: $("btnDisparar") };
+    armaCaja: $("armaCaja"), armaMarcador: $("armaMarcador"), btnDisparar: $("btnDisparar"), volMusica: $("volMusica"), volSfx: $("volSfx") };
 
   /* ---------- 5.5b Sistema de vida (100 de energía) ---------- */
   function actualizarVida() {
@@ -604,6 +619,7 @@ function montar(raiz, opciones = {}) {
   }
   function golpear(cant) {
     const t = performance.now();
+    if (t < jug.dashHasta) return;                 // durante el dash no recibes daño
     if (t - ultimoGolpe < 450) return;             // breve invulnerabilidad tras cada golpe
     ultimoGolpe = t;
     vida = acotar(vida - cant, 0, cfg.vidaMax);
@@ -614,6 +630,7 @@ function montar(raiz, opciones = {}) {
     avisar("Te quedaste sin energía. Vuelves a la entrada para recuperarte.");
     anunciar("Energía agotada. Regresas a la entrada con la energía al máximo.");
     jug.x = mundo.inicio.x; jug.y = mundo.inicio.y; ruta = []; cam.px = undefined;
+    reiniciarColiseoTrasDesmayo();
     vida = cfg.vidaMax;
     actualizarVida();
   }
@@ -647,7 +664,8 @@ function montar(raiz, opciones = {}) {
   function actualizarEquipo() {
     if (el.armaCaja) el.armaCaja.hidden = !tienePistola;
     if (el.btnDisparar) el.btnDisparar.hidden = !tienePistola || !matchMedia("(pointer: coarse)").matches;
-    if (el.armaMarcador) el.armaMarcador.textContent = `${armaActual ? armaActual.nombre + " · " : ""}${blancosImpactados} blancos · ${enemigosDerrotados} enemigos`;
+    const recarga = performance.now() < rayoPListoEn ? ` · Rayo P en recarga ${Math.ceil((rayoPListoEn - performance.now()) / 1000)} s` : "";
+    if (el.armaMarcador) el.armaMarcador.textContent = `${armaActual ? armaActual.nombre + " · " : ""}${blancosImpactados} blancos · ${enemigosDerrotados} enemigos${recarga}`;
   }
   function abrirNPC() {
     const dlg = el.dlgNPC;
@@ -736,6 +754,18 @@ function montar(raiz, opciones = {}) {
   }
   /* ---- Sonido de disparo: sintetizado con Web Audio (ruido filtrado + golpe grave), no son grabaciones reales ---- */
   let audioCtx = null;
+  const volumen = { sfx: 0.8, musica: 0.6, ...leer("espacio.volumen.v1", {}) };   // 0 a 1, lo elige el jugador con los sliders
+  volumen.sfx = acotar(+volumen.sfx || 0, 0, 1); volumen.musica = acotar(+volumen.musica || 0, 0, 1);
+  let sfxGain = null;                                                              // nodo maestro de todos los efectos de Web Audio
+  function salidaSfx(ctx) {
+    if (!sfxGain) { sfxGain = ctx.createGain(); sfxGain.gain.value = volumen.sfx; sfxGain.connect(ctx.destination); }
+    return sfxGain;
+  }
+  function aplicarVolumen() {
+    if (sfxGain) sfxGain.gain.value = volumen.sfx;
+    if (musicaJefe) musicaJefe.volume = volumen.musica;
+    if (audioUltra) audioUltra.volume = acotar(0.85 * volumen.sfx, 0, 1);
+  }
   function getAudioCtx() {
     if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; } }
     return audioCtx;
@@ -752,7 +782,7 @@ function montar(raiz, opciones = {}) {
       const filtro = ctx.createBiquadFilter(); filtro.type = "lowpass"; filtro.frequency.value = 2600;
       const ganancia = ctx.createGain();
       ganancia.gain.setValueAtTime(0.3, ahora); ganancia.gain.exponentialRampToValueAtTime(0.001, ahora + 0.2);
-      osc.connect(filtro); filtro.connect(ganancia); ganancia.connect(ctx.destination);
+      osc.connect(filtro); filtro.connect(ganancia); ganancia.connect(salidaSfx(ctx));
       osc.start(ahora); osc.stop(ahora + 0.2);
       return;
     }
@@ -765,14 +795,14 @@ function montar(raiz, opciones = {}) {
     filtro.frequency.value = { pistola: 2200, subfusil: 2600, escopeta: 1500, rifle: 1900 }[tipo] || 2000;
     const gananciaRuido = ctx.createGain();
     gananciaRuido.gain.setValueAtTime(0.5, ahora); gananciaRuido.gain.exponentialRampToValueAtTime(0.001, ahora + dur);
-    ruido.connect(filtro); filtro.connect(gananciaRuido); gananciaRuido.connect(ctx.destination);
+    ruido.connect(filtro); filtro.connect(gananciaRuido); gananciaRuido.connect(salidaSfx(ctx));
     ruido.start(ahora); ruido.stop(ahora + dur);
     const osc = ctx.createOscillator(); osc.type = "square";
     const f0 = { pistola: 180, subfusil: 160, escopeta: 110, rifle: 140 }[tipo] || 160;
     osc.frequency.setValueAtTime(f0, ahora); osc.frequency.exponentialRampToValueAtTime(f0 * 0.4, ahora + 0.05);
     const gananciaOsc = ctx.createGain();
     gananciaOsc.gain.setValueAtTime(0.35, ahora); gananciaOsc.gain.exponentialRampToValueAtTime(0.001, ahora + 0.08);
-    osc.connect(gananciaOsc); gananciaOsc.connect(ctx.destination);
+    osc.connect(gananciaOsc); gananciaOsc.connect(salidaSfx(ctx));
     osc.start(ahora); osc.stop(ahora + 0.09);
   }
   /* ---- Rayo cargado (tecla G): zumbido sostenido mientras se mantiene presionada, sintetizado ---- */
@@ -787,7 +817,7 @@ function montar(raiz, opciones = {}) {
     const filtro = ctx.createBiquadFilter(); filtro.type = "lowpass"; filtro.frequency.value = 2200;
     const ganancia = ctx.createGain();
     ganancia.gain.setValueAtTime(0, ahora); ganancia.gain.linearRampToValueAtTime(0.22, ahora + 0.06);
-    osc.connect(filtro); filtro.connect(ganancia); ganancia.connect(ctx.destination);
+    osc.connect(filtro); filtro.connect(ganancia); ganancia.connect(salidaSfx(ctx));
     osc.start(ahora); lfo.start(ahora);
     nodoCarga = { osc, lfo, ganancia, ctx };
   }
@@ -805,7 +835,7 @@ function montar(raiz, opciones = {}) {
   // cuadro; desaparece en cuanto se suelta la tecla (no es instantáneo como el disparo con F).
   function actualizarRayoCargado(dt) {
     const ahora = performance.now();
-    const activo = armaActual && armaActual.esRayo && teclas.has("g") && !hayDialogo() && !panelId;
+    const activo = armaActual && armaActual.esRayo && (teclas.has("g") || ratonFuego === "g") && !hayDialogo() && !panelId;
     if (!activo) {
       if (cargandoRayo) { cargandoRayo = false; detenerSonidoCarga(); }
       rayoActivo = null;
@@ -848,20 +878,35 @@ function montar(raiz, opciones = {}) {
     if (!(armaActual && armaActual.esRayo)) { avisar("Necesitas el visor de energía para usar esto."); return; }
     if (hayDialogo() || panelId) return;
     const ahora = performance.now();
-    if (ahora < ultraHasta) return;      // ya está activo: no se reinicia hasta que termine
+    if (ahora < ultraHasta) { cancelarRayoUltra(); return; }   // segunda pulsación: lo cancela
+    if (ahora < rayoPListoEn) {
+      const s = Math.ceil((rayoPListoEn - ahora) / 1000);
+      avisar(`Rayo en recarga: ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
+      return;
+    }
     ultraHasta = ahora + DURACION_RAYO_P * 1000;
     try {
       if (audioUltra) { audioUltra.pause(); }
       audioUltra = new Audio(AUDIO_RAYO_P);
-      audioUltra.volume = 0.85;
+      audioUltra.volume = acotar(0.85 * volumen.sfx, 0, 1);
       audioUltra.play().catch(() => {});
     } catch (e) { /* si el navegador bloquea el audio, el rayo sigue funcionando igual */ }
     avisar("¡Rayo de energía al máximo!");
     anunciar("Rayo de energía máximo activado.");
   }
+  function cancelarRayoUltra() {
+    ultraHasta = 0; rayoUltra = null;
+    try { if (audioUltra) audioUltra.pause(); } catch (e) { /* sin audio: no pasa nada */ }
+    rayoPListoEn = performance.now() + COOLDOWN_RAYO_P;
+    avisar("Rayo cancelado. Recarga de 3 minutos.");
+    anunciar("Rayo de energía cancelado.");
+  }
   function actualizarRayoUltra(dt) {
     const ahora = performance.now();
-    if (ahora >= ultraHasta) { rayoUltra = null; return; }
+    if (ahora >= ultraHasta) {
+      if (rayoUltra) rayoPListoEn = ahora + COOLDOWN_RAYO_P;   // terminó solo: también entra en recarga
+      rayoUltra = null; return;
+    }
     if (hayDialogo() || panelId) return;   // se pausa sin perder el tiempo que le queda
     // Atraviesa muebles y paredes: solo se detiene en el borde del mapa (de punta a punta).
     const alcance = Math.hypot(W, H) + 2;
@@ -948,7 +993,7 @@ function montar(raiz, opciones = {}) {
   function generarEnemigo() {
     if (enemigos.length >= ENEMIGO_MAX) return;
     for (let intento = 0; intento < 25; intento++) {
-      const x = 1 + Math.random() * (W - 2), y = 1 + Math.random() * (H - 2);
+      const x = 1 + Math.random() * (W - 2), y = 1 + Math.random() * (YP - 2);
       if (!puedeColocarEnemigo(x, y, ENEMIGO_DIST_SPAWN)) continue;
       enemigos.push({
         id: "en-" + (++ultimoIdEnemigo), x, y, hp: ENEMIGO_HP, hpMax: ENEMIGO_HP,
@@ -964,7 +1009,7 @@ function montar(raiz, opciones = {}) {
   function generarJefe() {
     const x = mundo.puertaPatio ? mundo.puertaPatio.x + mundo.puertaPatio.ancho / 2 : W / 2;
     const yBase = mundo.limiteLobby || 0;
-    const y = yBase + (H - yBase) * 0.55;
+    const y = yBase + (YP - yBase) * 0.55;
     enemigos.push({
       id: "jefe-" + (++ultimoIdEnemigo), x, y, hp: JEFE_HP, hpMax: JEFE_HP, radio: JEFE_RADIO,
       esJefe: true, nombreJefe: "Centinela del Patio", bob: Math.random() * 10,
@@ -981,6 +1026,8 @@ function montar(raiz, opciones = {}) {
       jefeDerrotado = true;
       avisar(`¡Derrotaste al ${en.nombreJefe}!`);
       anunciar(`Jefe derrotado: ${en.nombreJefe}.`);
+    } else if (en.esColiseo) {
+      coliseoVencido();
     } else {
       enemigosDerrotados++;
     }
@@ -1043,13 +1090,14 @@ function montar(raiz, opciones = {}) {
   function actualizarEnemigos(dt) {
     const ahora = performance.now();
     enemigos.forEach(en => {
+      if (en.esColiseo) { actualizarGranHocico(en, dt); return; }
       if (en.esJefe) {
         // El jefe flota y persigue al jugador (más rápido cuando le queda poca vida), sin salirse del patio
         en.bob = (en.bob || 0) + dt;
         const furioso = en.hp <= en.hpMax * 0.45;
         const vel = (furioso ? 3.4 : 1.5) * dt;
         const ddxJ = jug.x - en.x, ddyJ = jug.y - en.y, ddJ = Math.hypot(ddxJ, ddyJ) || 1;
-        const yMin = (mundo.limiteLobby || 0) + 0.9, yMax = H - 0.9;
+        const yMin = (mundo.limiteLobby || 0) + 0.9, yMax = YP - 0.9;
         en.x = acotar(en.x + (ddxJ / ddJ) * vel, 0.9, W - 0.9);
         en.y = acotar(en.y + (ddyJ / ddJ) * vel, yMin, yMax);
         en.dir = Math.abs(ddxJ) > Math.abs(ddyJ) ? (ddxJ < 0 ? "left" : "right") : (ddyJ < 0 ? "up" : "down");
@@ -1061,7 +1109,7 @@ function montar(raiz, opciones = {}) {
       if (ahora > en.proxCambio) {
         for (let i = 0; i < 10; i++) {
           const ang = Math.random() * TAU, rad = 1 + Math.random() * 2.4;
-          const nx = acotar(en.x + Math.cos(ang) * rad, 0.6, W - 0.6), ny = acotar(en.y + Math.sin(ang) * rad, 0.6, H - 0.6);
+          const nx = acotar(en.x + Math.cos(ang) * rad, 0.6, W - 0.6), ny = acotar(en.y + Math.sin(ang) * rad, 0.6, YP - 0.6);
           if (!colisiona(nx, ny, 0.3)) { en.objX = nx; en.objY = ny; break; }
         }
         en.proxCambio = ahora + 1200 + Math.random() * 2200;
@@ -1099,74 +1147,911 @@ function montar(raiz, opciones = {}) {
   const anunciar = txt => { el.sr.textContent = ""; setTimeout(() => { el.sr.textContent = txt; }, 30); };
 
   /* ---------- 5.6 Proyección y primitivas de dibujo ---------- */
-  const P = (x, y, z = 0) => (modo === "iso" ? [(x - y) * TW / 2, (x + y) * TH / 2 - z * ZH] : [x * S2, y * S2]);
+  const P = (x, y) => [x * S2, y * S2];                 // mundo -> píxeles de la vista 2D
+  // Punto a la altura de la cabeza del avatar (la figura mide unos 40 px sobre sus pies)
+  const enCabeza = (x, y) => { const [px, py] = P(x, y); return [px, py - 40]; };
   function poli(pts, fill, stroke, lw = 1) {
     c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath();
     if (fill) { c.fillStyle = fill; c.fill(); }
     if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
   }
   function caja(x, y, w, d, z0, h, col, o = {}) {
-    const cs = typeof col === "string" ? { top: tono(col, 1.14), izq: tono(col, 0.86), der: tono(col, 0.7), borde: tono(col, 0.52) } : col;
+    const cs = typeof col === "string" ? { top: tono(col, 1.14), borde: tono(col, 0.52) } : col;
     const prev = c.globalAlpha; c.globalAlpha = prev * (o.alfa ?? 1);
-    if (modo === "2d") {
-      const [x0, y0] = P(x, y), [x1, y1] = P(x + w, y + d);
-      c.fillStyle = cs.top; c.fillRect(x0, y0, x1 - x0, y1 - y0);
-      c.strokeStyle = cs.borde; c.lineWidth = 1; c.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
-    } else {
-      const z1 = z0 + h;
-      poli([P(x, y + d, z1), P(x + w, y + d, z1), P(x + w, y + d, z0), P(x, y + d, z0)], cs.izq, cs.borde, 0.8);
-      poli([P(x + w, y, z1), P(x + w, y + d, z1), P(x + w, y + d, z0), P(x + w, y, z0)], cs.der, cs.borde, 0.8);
-      poli([P(x, y, z1), P(x + w, y, z1), P(x + w, y + d, z1), P(x, y + d, z1)], cs.top, cs.borde, 0.8);
-    }
+    const [x0, y0] = P(x, y), [x1, y1] = P(x + w, y + d);
+    c.fillStyle = cs.top; c.fillRect(x0, y0, x1 - x0, y1 - y0);
+    c.strokeStyle = cs.borde; c.lineWidth = 1; c.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
     c.globalAlpha = prev;
   }
   function cil(cx, cy, r, z0, h, col, o = {}) {
-    const cs = typeof col === "string" ? { top: tono(col, 1.14), lado: tono(col, 0.8), borde: tono(col, 0.52) } : col;
+    const cs = typeof col === "string" ? { top: tono(col, 1.14), borde: tono(col, 0.52) } : col;
     const prev = c.globalAlpha; c.globalAlpha = prev * (o.alfa ?? 1);
-    if (modo === "2d") {
-      const [x, y] = P(cx, cy);
-      c.beginPath(); c.arc(x, y, r * S2, 0, TAU); c.fillStyle = cs.top; c.fill(); c.strokeStyle = cs.borde; c.lineWidth = 1; c.stroke();
-    } else {
-      const [x, ya] = P(cx, cy, z0 + h), [, yb] = P(cx, cy, z0);
-      const rx = r * RAIZ2 * TW / 2, ry = r * RAIZ2 * TH / 2;
-      c.fillStyle = cs.lado; c.strokeStyle = cs.borde; c.lineWidth = 0.8;
-      if (h > 0) {
-        c.beginPath(); c.ellipse(x, yb, rx, ry, 0, 0, TAU); c.fill();
-        c.fillRect(x - rx, ya, 2 * rx, yb - ya);
-        c.beginPath(); c.moveTo(x - rx, ya); c.lineTo(x - rx, yb); c.moveTo(x + rx, ya); c.lineTo(x + rx, yb); c.stroke();
-      }
-      c.beginPath(); c.ellipse(x, ya, rx, ry, 0, 0, TAU); c.fillStyle = cs.top; c.fill(); c.stroke();
-    }
+    const [x, y] = P(cx, cy);
+    c.beginPath(); c.arc(x, y, r * S2, 0, TAU); c.fillStyle = cs.top; c.fill(); c.strokeStyle = cs.borde; c.lineWidth = 1; c.stroke();
     c.globalAlpha = prev;
   }
   function esfera(cx, cy, z, r, col) {
-    const [x, y] = P(cx, cy, z), pr = modo === "iso" ? r * ZH : r * S2;
+    const [x, y] = P(cx, cy), pr = r * S2;
     const gr = c.createRadialGradient(x - pr * 0.3, y - pr * 0.35, pr * 0.1, x, y, pr);
     gr.addColorStop(0, tono(col, 1.35)); gr.addColorStop(1, tono(col, 0.74));
     c.beginPath(); c.arc(x, y, pr, 0, TAU); c.fillStyle = gr; c.fill();
   }
   function discoPiso(cx, cy, r, fill, stroke, lw = 1.5) {
-    const pts = []; for (let i = 0; i < 40; i++) pts.push(P(cx + Math.cos(i / 40 * TAU) * r, cy + Math.sin(i / 40 * TAU) * r, 0));
+    const pts = []; for (let i = 0; i < 40; i++) pts.push(P(cx + Math.cos(i / 40 * TAU) * r, cy + Math.sin(i / 40 * TAU) * r));
     poli(pts, fill, stroke, lw);
   }
   function rectPiso(x, y, w, d, fill, stroke, lw = 1.5) { poli([P(x, y), P(x + w, y), P(x + w, y + d), P(x, y + d)], fill, stroke, lw); }
-  // Plano vertical con y constante (mira hacia +y). Coordenadas internas: 100 unidades = 1 m. v crece hacia abajo.
-  function panelY(x0, y, zTop, fn) {
-    if (modo !== "iso") return;
-    const [ox, oy] = P(x0, y, zTop);
-    c.save(); c.translate(ox, oy); c.transform(TW / 2 / 100, TH / 2 / 100, 0, ZH / 100, 0, 0); fn(); c.restore();
-  }
-  // Plano vertical con x constante (mira hacia +x); el texto corre hacia -y, desde y1 (extremo mayor).
-  function panelX(x, y1, zTop, fn) {
-    if (modo !== "iso") return;
-    const [ox, oy] = P(x, y1, zTop);
-    c.save(); c.translate(ox, oy); c.transform(TW / 2 / 100, -TH / 2 / 100, 0, ZH / 100, 0, 0); fn(); c.restore();
-  }
-
   /* ---------- 5.7 Construcción del mundo ---------- */
   const solidos = [], estaticos = [], decals = [];
   const dentro = {};                                  // id de cuarto -> jugador dentro
   const agregar = (cx, cy, h, fn, extra = {}) => estaticos.push(Object.assign({ k: cx + cy, h, fn }, extra));
+  /* ===================================================================================
+     5.7b COLISEO: hueco-portal en el muro del patio, estatua de invocación, el jefe final
+     "Gran Hocico" (ataques con telegrafía clara) y la mascota Verity. Hay público en las gradas.
+     =================================================================================== */
+  const YP = mundo.patioFin || H;                         // el patio termina aquí: los enemigos del patio no cruzan el muro
+  const SEP = mundo.separador || { y: 34, gapX: 27, gapAncho: 2 };
+  const COL = mundo.coliseo || { x0: 0.8, y0: 34.2, x1: 31.2, y1: 66 };   // coliseo completo, con gradas
+  const PF = mundo.campo || { x0: 3.6, y0: 35.6, x1: 28.4, y1: 62.2 };    // campo de pelea (dentro de las gradas)
+  const COL_CX = (PF.x0 + PF.x1) / 2, COL_CY = (PF.y0 + PF.y1) / 2;
+  const HOCICO_HP = 1200, HOCICO_RADIO = 1.0;
+  const AVISO_HOCICO = { radial: 0.6, abanico: 0.7, embestida: 1.0, charcos: 1.0, espiral: 0.8, lluvia: 1.2, onda: 0.9, relampagos: 0.5 };
+  const DURA_HOCICO = { radial: 0.3, abanico: 0.3, embestida: 0.7, charcos: 0.3, espiral: 2.2, lluvia: 0.3, onda: 0.3, relampagos: 0.8 };
+  const COOLDOWN_HOCICO = [1.1, 0.8, 0.55];
+  const RAYO_CIELO_DANO = 25, RAYO_CIELO_AVISO = 2.0;     // segundos de aviso antes de que caiga el rayo
+  const DASH_DURACION = 260, DASH_ENFRIAMIENTO = 900, DASH_VEL = 15, DASH_VENTANA = 280;
+  // Canciones para jefes: todo lo que haya en la carpeta de música (Musica/ por defecto) o en cfg.musicasJefe.
+  // Cada pelea elige una al azar. Si el navegador no puede leer la carpeta (por ejemplo abriendo el archivo sin servidor),
+  // se usa Musica/CoryBoss.mp3.
+  let pistasJefe = Array.isArray(cfg.musicasJefe) && cfg.musicasJefe.length ? cfg.musicasJefe.slice() : null;
+  let pistaJefe = null, musicaCargada = null;
+  async function cargarPistasJefe() {
+    if (pistasJefe) return;
+    const carpeta = cfg.carpetaMusica || "Musica/";
+    const base = new URL(carpeta, document.baseURI);
+    const lista = [];
+    try {
+      const r = await fetch(base.href);
+      if (r.ok) {
+        const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+        doc.querySelectorAll("a[href]").forEach(a => {
+          const h = a.getAttribute("href") || "";
+          if (/\.(mp3|ogg|wav|m4a)$/i.test(h.split("?")[0])) lista.push(new URL(h, base).href);
+        });
+      }
+    } catch (e) { /* sin servidor no se puede listar la carpeta: se usa la pista de respaldo */ }
+    pistasJefe = lista.length ? [...new Set(lista)] : [new URL("CoryBoss.mp3", base).href];
+  }
+  function elegirPistaJefe() {
+    cargarPistasJefe();
+    const lista = pistasJefe || [new URL("Musica/CoryBoss.mp3", document.baseURI).href];
+    return lista[Math.floor(Math.random() * lista.length)];
+  }
+  let coliseo = Object.assign({ derrotado: false }, leer(cfg.claveColiseo, {}));
+  let bossCol = null;                                     // Gran Hocico vivo (también está en enemigos)
+  let balasJefe = [];                                     // proyectiles enemigos: {x,y,dx,dy,vel,nace,vida,dano,col}
+  let charcos = [];                                       // charcos de daño en el piso
+  let rayosPend = [];                                     // círculos de telegrafía: rayo del cielo que cae en ellos
+  let rayosCielo = [];                                    // rayos visibles cayendo (efecto)
+  let marcasRayo = [];                                    // quemaduras que dejan los rayos
+  let ondas = [];                                         // ondas de choque con un hueco seguro
+  let transicion = null;                                  // fundido a negro al cruzar el portal
+  let musicaJefe = null;                                  // canción del jefe (se pausa fuera del coliseo)
+  let ultimoHud = 0;
+  const verity = { ok: !!coliseo.derrotado, x: mundo.inicio.x, y: mundo.inicio.y, bob: 0 };
+  const ESTATUA = { id: "estatua-coliseo", nombre: "Estatua de invocación", etiquetaAccion: "Usar", x: COL_CX, y: PF.y1 - 2.2 };
+  ESTATUA.ancla = [ESTATUA.x, ESTATUA.y + 1.0];
+  ESTATUA.zona = [ESTATUA.x - 2.4, ESTATUA.y - 2.4, ESTATUA.x + 2.4, ESTATUA.y + 2.4];
+  ESTATUA.hit = [ESTATUA.x - 0.8, ESTATUA.y - 0.8, ESTATUA.x + 0.8, ESTATUA.y + 0.8];
+  ESTATUA.alHablar = () => invocarColiseo();
+
+  /* ----- Gradas: tres niveles a cada lado y en el fondo; el nivel más alto es el más lejano del campo ----- */
+  function gradasColiseo() {
+    const g = [];
+    const alturas = [0.5, 1.05, 1.6];                     // k = 0 (cerca del campo) ... 2 (lejos)
+    for (let k = 0; k < 3; k++) {
+      const h = alturas[k];
+      g.push({ x0: PF.x0 - (k + 1) * 0.9, y0: PF.y0, x1: PF.x0 - k * 0.9, y1: PF.y1, h, k });   // izquierda
+      g.push({ x0: PF.x1 + k * 0.9, y0: PF.y0, x1: PF.x1 + (k + 1) * 0.9, y1: PF.y1, h, k });   // derecha
+      g.push({ x0: PF.x0, y0: PF.y1 + k * 0.9, x1: PF.x1, y1: PF.y1 + (k + 1) * 0.9, h, k });   // fondo
+    }
+    return g;
+  }
+  const GRADAS = gradasColiseo();
+  const COLORES_PUBLICO = ["#e74c3c", "#3498db", "#f1c40f", "#2ecc71", "#9b59b6", "#ecf0f1", "#e67e22", "#1abc9c"];
+  const PIELES = ["#f1c7a3", "#c68e5c", "#8d5a34", "#ffdbb8", "#e0a97a"];
+  const espectadores = [];
+  const alAzar = arr => arr[Math.floor(Math.random() * arr.length)];
+  GRADAS.forEach(gr => {
+    const z = gr.h + 0.06;                                // de pie sobre la franja de asientos
+    const agregarPublico = (x, y) => espectadores.push({ x, y, z, grada: gr, ropa: alAzar(COLORES_PUBLICO), piel: alAzar(PIELES), ph: Math.random() * TAU });
+    if (gr.y0 === PF.y0) {                                // gradas laterales: dos filas a lo largo del escalón
+      for (let y = gr.y0 + 0.55; y < gr.y1 - 0.3; y += 0.9) { agregarPublico(gr.x0 + 0.3, y); agregarPublico(gr.x0 + 0.62, y); }
+    } else {                                              // gradas del fondo
+      for (let x = gr.x0 + 0.55; x < gr.x1 - 0.3; x += 0.9) { agregarPublico(x, gr.y0 + 0.3); agregarPublico(x, gr.y0 + 0.62); }
+    }
+  });
+
+  /* ----- Utilidades del jefe ----- */
+  function granHocicoFase(en) { const p = en.hp / en.hpMax; return p > 0.66 ? 1 : (p > 0.33 ? 2 : 3); }
+  function dirHaciaJugador(en) { const dx = jug.x - en.x, dy = jug.y - en.y, d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; }
+  function puntoEnCampo(margen = 1.4) {
+    return [PF.x0 + margen + Math.random() * (PF.x1 - PF.x0 - 2 * margen), PF.y0 + margen + Math.random() * (PF.y1 - PF.y0 - 2 * margen)];
+  }
+  function puntoEnCampoCerca(cx, cy, r) {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * TAU, d = Math.random() * r;
+      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+      if (x > PF.x0 + 1.4 && x < PF.x1 - 1.4 && y > PF.y0 + 1.4 && y < PF.y1 - 1.4) return [x, y];
+    }
+    return [COL_CX, COL_CY];
+  }
+  function dispararHocico(x, y, ang, vel, dano, col = "#ff7ad9") {
+    balasJefe.push({ x, y, dx: Math.cos(ang), dy: Math.sin(ang), vel, nace: performance.now(), vida: 4200, dano, col });
+  }
+  function anilloHocico(x, y, n, vel, dano, off = 0, col) {
+    for (let i = 0; i < n; i++) dispararHocico(x, y, off + (i / n) * TAU, vel, dano, col);
+  }
+  function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; }
+
+  /* ----- Ataques: cada uno tiene un aviso (telegrafía) y luego se ejecuta ----- */
+  function elegirAtaqueHocico(en) {
+    const f = granHocicoFase(en);
+    const pool = ["radial", "abanico", "embestida", "charcos", "onda"];
+    if (f >= 2) pool.push("espiral", "relampagos");
+    if (f >= 3) pool.push("lluvia", "relampagos", "onda");
+    const libres = pool.filter(a => a !== en.ultimoAtaque);
+    return libres[Math.floor(Math.random() * libres.length)];
+  }
+  function prepararAtaqueHocico(en, ataque) {
+    const f = granHocicoFase(en), [dx, dy] = dirHaciaJugador(en);
+    en.ultimoAtaque = ataque; en.ataqueActual = ataque;
+    en.estado = "aviso"; en.tiempo = AVISO_HOCICO[ataque];
+    if (ataque === "abanico") en.aviso = { tipo: "abanico", ang: Math.atan2(dy, dx) };
+    else if (ataque === "embestida") en.aviso = { tipo: "embestida", dx, dy };
+    else if (ataque === "charcos") en.aviso = { tipo: "puntos", pts: Array.from({ length: 2 + f }, () => puntoEnCampoCerca(jug.x, jug.y, 2.6)) };
+    else if (ataque === "lluvia") en.aviso = { tipo: "puntos", pts: Array.from({ length: 6 }, () => puntoEnCampo(1.6)) };
+    else if (ataque === "onda") en.aviso = { tipo: "onda", hueco: Math.random() * TAU };
+    else if (ataque === "relampagos") en.aviso = { tipo: "rayos" };
+    else en.aviso = { tipo: "radial" };
+  }
+  function ejecutarAtaqueHocico(en) {
+    const f = granHocicoFase(en), a = en.ataqueActual, aviso = en.aviso, ahora = performance.now();
+    en.aviso = null; en.estado = "ataque"; en.tiempo = DURA_HOCICO[a];
+    if (a === "radial") anilloHocico(en.x, en.y, [8, 12, 16][f - 1], [3.4, 3.9, 4.4][f - 1], 8, en.bob * 0.4);
+    else if (a === "abanico") {
+      const n = [5, 7, 9][f - 1];
+      for (let i = 0; i < n; i++) dispararHocico(en.x, en.y, aviso.ang - 0.5 + (i / (n - 1)), 6.4, 8);
+    }
+    else if (a === "embestida") { en.carga = { dx: aviso.dx, dy: aviso.dy, contacto: false }; en.tiempo = 0.7; }
+    else if (a === "charcos") {
+      for (const [px, py] of aviso.pts) charcos.push({ x: px, y: py, r: 1.0, inicio: ahora, fin: ahora + 3900, ultimo: 0 });
+      en.tiempo = 0.3;
+    }
+    else if (a === "espiral") { en.espiral = { ang: 0, sig: 0 }; en.tiempo = 2.2; }
+    else if (a === "lluvia") { for (const [px, py] of aviso.pts) anilloHocico(px, py, 8, 3.2, 7, Math.random() * TAU); }
+    else if (a === "onda") { ondas.push({ x: en.x, y: en.y, hueco: aviso.hueco, t0: ahora, dur: 1100, r0: 1.2, r1: 10, golpeado: false }); }
+    else if (a === "relampagos") {
+      // Un círculo apuntado a donde estás tú (a partir de la fase 2) y el resto repartidos por el campo
+      const n = [4, 5, 7][f - 1], pts = [];
+      if (f >= 2) pts.push([acotar(jug.x, PF.x0 + 1.5, PF.x1 - 1.5), acotar(jug.y, PF.y0 + 1.5, PF.y1 - 1.5)]);
+      let intentos = 0;
+      while (pts.length < n && intentos < 200) {
+        intentos++;
+        const p = puntoEnCampo(1.8);
+        if (pts.every(q => Math.hypot(q[0] - p[0], q[1] - p[1]) > 3.4) && Math.hypot(p[0] - en.x, p[1] - en.y) > 2.6) pts.push(p);
+      }
+      pts.forEach(([x, y]) => rayosPend.push({ x, y, r: 1.7, creado: ahora, golpeA: ahora + RAYO_CIELO_AVISO * 1000 }));
+      en.tiempo = 0.8;
+    }
+  }
+  function actualizarGranHocico(en, dt) {
+    const ahora = performance.now(), f = granHocicoFase(en);
+    en.bob = (en.bob || 0) + dt;
+    if (en.fasePrev !== f) {
+      if (en.fasePrev !== undefined) {
+        avisar(f === 2 ? "¡Gran Hocico se enfurece!" : "¡Gran Hocico entra en su última fase!");
+        anunciar("Gran Hocico cambia de fase.");
+      }
+      en.fasePrev = f;
+    }
+    if (en.estado === "mover") {
+      const [dx, dy] = dirHaciaJugador(en), d = Math.hypot(jug.x - en.x, jug.y - en.y);
+      // Se mantiene a distancia y da vueltas alrededor del jugador
+      const tx = acotar(jug.x - dx * 4.6 + Math.sin(en.bob * 1.3) * 1.6, PF.x0 + 1.3, PF.x1 - 1.3);
+      const ty = acotar(jug.y - dy * 4.6 + Math.cos(en.bob * 1.1) * 1.6, PF.y0 + 1.3, PF.y1 - 1.3);
+      const ddx = tx - en.x, ddy = ty - en.y, dd = Math.hypot(ddx, ddy);
+      const vel = [1.1, 1.5, 1.9][f - 1] * dt;
+      en.mov = dd > 0.08;
+      if (dd > 0.08) {
+        const vx = (ddx / dd) * vel, vy = (ddy / dd) * vel;
+        if (!colisiona(en.x + vx, en.y, 0.7)) en.x += vx;
+        if (!colisiona(en.x, en.y + vy, 0.7)) en.y += vy;
+        en.dir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? "left" : "right") : (vy < 0 ? "up" : "down");
+        en.paso += vel * 6;
+      }
+      if (d < HOCICO_RADIO + 0.45 && ahora - (en.ultimoContacto || 0) > 900) { en.ultimoContacto = ahora; golpear(6); }
+      en.tiempo -= dt;
+      if (en.tiempo <= 0) prepararAtaqueHocico(en, elegirAtaqueHocico(en));
+    } else if (en.estado === "aviso") {
+      en.tiempo -= dt;
+      if (en.tiempo <= 0) ejecutarAtaqueHocico(en);
+    } else if (en.estado === "ataque") {
+      en.tiempo -= dt;
+      if (en.ataqueActual === "espiral" && en.espiral) {
+        en.espiral.sig -= dt;
+        if (en.espiral.sig <= 0) {
+          en.espiral.sig = 0.11; en.espiral.ang += 0.42;
+          dispararHocico(en.x, en.y, en.espiral.ang, 4.6, 7);
+          dispararHocico(en.x, en.y, en.espiral.ang + Math.PI, 4.6, 7);
+        }
+      } else if (en.ataqueActual === "embestida" && en.carga) {
+        const nx = en.x + en.carga.dx * 11 * dt, ny = en.y + en.carga.dy * 11 * dt;
+        if (colisiona(nx, ny, 0.7)) { en.carga = null; en.estado = "aturdido"; en.tiempo = 1.1; }
+        else {
+          en.x = nx; en.y = ny;
+          if (!en.carga.contacto && Math.hypot(jug.x - en.x, jug.y - en.y) < HOCICO_RADIO + 0.35) { en.carga.contacto = true; golpear(14); }
+        }
+      }
+      if (en.estado === "ataque" && en.tiempo <= 0) { en.estado = "mover"; en.tiempo = COOLDOWN_HOCICO[f - 1]; en.carga = null; en.espiral = null; }
+    } else if (en.estado === "aturdido") {
+      en.tiempo -= dt;
+      if (en.tiempo <= 0) { en.estado = "mover"; en.tiempo = COOLDOWN_HOCICO[f - 1]; }
+    }
+  }
+
+  /* ----- Invocación, derrota y reinicio ----- */
+  function invocarColiseo() {
+    if (bossCol && enemigos.includes(bossCol)) { avisar("Gran Hocico ya está en el coliseo."); return; }
+    if (!tienePistola) { avisar("Necesitas un arma para enfrentarlo. Consíguela con el encargado de objetos perdidos."); return; }
+    bossCol = { id: "gran-hocico", esColiseo: true, nombreJefe: "Gran Hocico", x: COL_CX, y: PF.y0 + 4.5,
+      hp: HOCICO_HP, hpMax: HOCICO_HP, radio: HOCICO_RADIO, bob: 0, dir: "down", paso: 0, mov: false,
+      estado: "mover", tiempo: 1.8 };
+    enemigos.push(bossCol);
+    pistaJefe = elegirPistaJefe();
+    avisar(coliseo.derrotado ? "¡Gran Hocico vuelve a la arena! Revancha." : "¡Gran Hocico aparece! El público enloquece.");
+    anunciar("Jefe final del coliseo: Gran Hocico. Lee los círculos del suelo y esquiva los rayos.");
+  }
+  function coliseoVencido() {
+    coliseo.derrotado = true; escribir(cfg.claveColiseo, coliseo);
+    bossCol = null; balasJefe = []; charcos = []; rayosPend = []; ondas = [];
+    verity.ok = true; verity.x = jug.x; verity.y = jug.y - 0.8;
+    avisar("¡Gran Hocico cayó! Has terminado el coliseo. Verity se une a tu equipo.");
+    anunciar("Jefe final derrotado. Verity, una mascota amarilla, ahora te sigue.");
+  }
+  function reiniciarColiseoTrasDesmayo() {
+    if (bossCol) { enemigos = enemigos.filter(e => e !== bossCol); bossCol = null; }
+    balasJefe = []; charcos = []; rayosPend = []; ondas = [];
+  }
+
+  /* ----- Dash: dos toques rápidos en cualquier dirección ----- */
+  const ultimoToque = { dir: null, t: 0 };
+  const DIR_TECLA = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0] };
+  function registrarToque(k) {
+    const ahora = performance.now(), sen = DIR_TECLA[k];
+    if (!sen) return;
+    const clave = sen.join(",");
+    if (ultimoToque.dir === clave && ahora - ultimoToque.t < DASH_VENTANA) {
+      ultimoToque.dir = null;
+      hacerDash(sen);
+    } else {
+      ultimoToque.dir = clave; ultimoToque.t = ahora;
+    }
+  }
+  function hacerDash(sen) {
+    const ahora = performance.now();
+    if (hayDialogo() || panelId || ahora < jug.dashCdHasta) return;
+    const [dx, dy] = pantallaAMundoDir(sen[0], sen[1]), l = Math.hypot(dx, dy) || 1;
+    jug.dashDx = dx / l; jug.dashDy = dy / l;
+    jug.dashHasta = ahora + DASH_DURACION;
+    jug.dashCdHasta = ahora + DASH_ENFRIAMIENTO;
+    ruta = [];
+  }
+
+  /* ----- Portal (hueco del muro): patio -> coliseo y de vuelta ----- */
+  function empezarTransicion(destino) {
+    if (transicion) return;
+    transicion = { t0: performance.now(), dur: 650, destino, hecho: false };
+  }
+  function revisarPortales() {
+    if (transicion) return;
+    if (jug.x <= SEP.gapX || jug.x >= SEP.gapX + SEP.gapAncho) return;
+    if (jug.y >= SEP.y - 0.35 && jug.y < SEP.y) empezarTransicion("coliseo");
+    else if (jug.y > SEP.y && jug.y <= SEP.y + 0.35) empezarTransicion("patio");
+  }
+  function actualizarTransicion() {
+    if (!transicion) return;
+    const p = (performance.now() - transicion.t0) / transicion.dur;
+    if (!transicion.hecho && p >= 0.5) {
+      transicion.hecho = true; ruta = [];
+      if (transicion.destino === "coliseo") { jug.x = COL_CX; jug.y = PF.y1 - 6; avisar("Entraste al coliseo. El público te observa. Usa la estatua cuando estés listo."); }
+      else if (transicion.destino === "primerPiso") { jug.x = LLEGADA_PISO1.x; jug.y = LLEGADA_PISO1.y; avisar("Subiste al primer piso."); }
+      else if (transicion.destino === "salaEstudio") { jug.x = LLEGADA_SALA.x; jug.y = LLEGADA_SALA.y; avisar("Bajaste a la sala de estudio."); }
+      else if (transicion.destino === "sotano") { jug.x = LLEGADA_SOTANO.x; jug.y = LLEGADA_SOTANO.y; avisar("Bajaste a Mensajería Hora Vive."); }
+      else if (transicion.destino === "salonAbajo") { jug.x = LLEGADA_SALON_ABAJO.x; jug.y = LLEGADA_SALON_ABAJO.y; avisar("Subiste al salón de abajo."); }
+      else if (transicion.destino === "lobby") { jug.x = LLEGADA_LOBBY.x; jug.y = LLEGADA_LOBBY.y; avisar("Bajaste al lobby."); }
+      else { jug.x = SEP.gapX + SEP.gapAncho / 2; jug.y = SEP.y - 1.6; avisar("Regresaste al patio."); }
+      cam.px = undefined;
+      verity.x = jug.x; verity.y = jug.y - 0.8;
+    }
+    if (p >= 1) transicion = null;
+  }
+
+  /* ----- Música del jefe: suena mientras Gran Hocico esté vivo y estés en el coliseo ----- */
+  // Estás dentro del coliseo con Gran Hocico vivo (fuera del coliseo, el sótano y el primer piso no cuentan como pelea)
+  const enPeleaJefe = () => !!bossCol && enemigos.includes(bossCol) && jug.y > SEP.y && jug.y < COL.y1 + 1;
+  function actualizarMusicaJefe() {
+    const debeSonar = enPeleaJefe();
+    if (musicaJefe !== false && debeSonar && pistaJefe && musicaCargada !== pistaJefe) {
+      if (musicaJefe) { try { musicaJefe.pause(); } catch (e) { /* nada que detener */ } }
+      try { musicaJefe = new Audio(pistaJefe); musicaJefe.loop = true; musicaJefe.volume = volumen.musica; musicaCargada = pistaJefe; }
+      catch (e) { musicaJefe = false; }
+    }
+    if (!musicaJefe) return;
+    if (debeSonar && musicaJefe.paused) {
+      try { const pr = musicaJefe.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) { /* el navegador bloqueó el audio */ }
+    }
+    else if (!debeSonar && !musicaJefe.paused) musicaJefe.pause();
+  }
+
+  /* ----- Música ambiental del sótano y del primer piso: fade out cuando empieza una pelea de jefe ----- */
+  const AMBIENTE_FADE_S = 1.2;                              // segundos que tarda en desvanecerse o aparecer
+  const ambiente = {                                         // zona -> pista y su nivel actual (0 a 1)
+    salaEstudio: { url: new URL(cfg.musicaSalaEstudio, document.baseURI).href, audio: null, nivel: 0, fallo: false },
+    primerPiso: { url: new URL(cfg.musicaPrimerPiso, document.baseURI).href, audio: null, nivel: 0, fallo: false }
+  };
+  function actualizarMusicaAmbiente(dt) {
+    const peleaJefe = enPeleaJefe();
+    const zonaActual = jug.y >= SOTANO2.y0 - 1 ? null : jug.y >= SOTANO.y0 - 1 ? "salaEstudio" : jug.y >= FY - 1 ? "primerPiso" : null;
+    for (const zona of Object.keys(ambiente)) {
+      const a = ambiente[zona];
+      const objetivo = zona === zonaActual && !peleaJefe ? 1 : 0;
+      a.nivel = acotar(a.nivel + Math.sign(objetivo - a.nivel) * Math.min(Math.abs(objetivo - a.nivel), dt / AMBIENTE_FADE_S), 0, 1);
+      if (!a.audio && a.nivel > 0 && !a.fallo) {
+        try { a.audio = new Audio(a.url); a.audio.loop = true; } catch (e) { a.fallo = true; }
+      }
+      if (!a.audio) continue;
+      a.audio.volume = acotar(a.nivel * volumen.musica, 0, 1);
+      if (a.nivel > 0 && a.audio.paused) {
+        try { const pr = a.audio.play(); if (pr && pr.catch) pr.catch(() => { a.fallo = true; }); } catch (e) { a.fallo = true; }
+      } else if (a.nivel === 0 && !a.audio.paused) a.audio.pause();
+    }
+  }
+
+  /* ----- Actualización por cuadro ----- */
+  function actualizarColiseo(dt) {
+    actualizarTransicion();
+    revisarPortales();
+    actualizarMusicaJefe();
+    actualizarMusicaAmbiente(dt);
+    const ahora = performance.now();
+    if (ahora - ultimoHud > 500) { ultimoHud = ahora; if (armaActual && armaActual.esRayo) actualizarEquipo(); }
+    // Círculos de telegrafía: cuando llega el momento cae el rayo sobre el círculo
+    for (let i = rayosPend.length - 1; i >= 0; i--) {
+      const r = rayosPend[i];
+      if (ahora < r.golpeA) continue;
+      rayosPend.splice(i, 1);
+      rayosCielo.push({ x: r.x, y: r.y, t: ahora });
+      marcasRayo.push({ x: r.x, y: r.y, r: r.r, t: ahora });
+      if (Math.hypot(jug.x - r.x, jug.y - r.y) < r.r) golpear(RAYO_CIELO_DANO);
+    }
+    for (let i = rayosCielo.length - 1; i >= 0; i--) if (ahora - rayosCielo[i].t > 380) rayosCielo.splice(i, 1);
+    for (let i = marcasRayo.length - 1; i >= 0; i--) if (ahora - marcasRayo[i].t > 900) marcasRayo.splice(i, 1);
+    // Ondas de choque: te golpean si la onda pasa por ti y no estás en su hueco
+    for (let i = ondas.length - 1; i >= 0; i--) {
+      const o = ondas[i], p = (ahora - o.t0) / o.dur;
+      if (p >= 1) { ondas.splice(i, 1); continue; }
+      const r = o.r0 + (o.r1 - o.r0) * p, d = Math.hypot(jug.x - o.x, jug.y - o.y);
+      if (!o.golpeado && Math.abs(d - r) < 0.5) {
+        const diff = Math.abs(angDiff(Math.atan2(jug.y - o.y, jug.x - o.x), o.hueco));
+        if (diff > 0.6) { o.golpeado = true; golpear(15); }
+      }
+    }
+    // Proyectiles del jefe
+    for (let i = balasJefe.length - 1; i >= 0; i--) {
+      const b = balasJefe[i];
+      b.x += b.dx * b.vel * dt; b.y += b.dy * b.vel * dt;
+      let quitar = ahora - b.nace > b.vida || colisiona(b.x, b.y, 0.08);
+      if (!quitar && Math.hypot(b.x - jug.x, b.y - jug.y) < 0.36) { golpear(b.dano); quitar = true; }
+      if (quitar) balasJefe.splice(i, 1);
+    }
+    // Charcos de daño
+    for (let i = charcos.length - 1; i >= 0; i--) {
+      const ch = charcos[i];
+      if (ahora > ch.fin) { charcos.splice(i, 1); continue; }
+      if (ahora > ch.inicio + 900 && Math.hypot(jug.x - ch.x, jug.y - ch.y) < ch.r && ahora - ch.ultimo > 600) { ch.ultimo = ahora; golpear(6); }
+    }
+    // Mascota
+    if (verity.ok) {
+      verity.bob += dt * 4;
+      const dx = jug.x - verity.x, dy = jug.y - verity.y, d = Math.hypot(dx, dy);
+      if (d > 7) { verity.x = jug.x; verity.y = jug.y - 0.8; }
+      else if (d > 1.1) {
+        const paso = Math.min(d - 1.1, Math.max(3.5, d * 2.5) * dt);
+        verity.x += (dx / d) * paso; verity.y += (dy / d) * paso;
+      }
+    }
+  }
+
+  /* ----- Dibujo ----- */
+  function dibujarSueloColiseo() {
+    const ahora = performance.now(), pulso = 0.5 + 0.5 * Math.sin(ahora / 180);
+    rectPiso(SEP.gapX, SEP.y - 0.14, SEP.gapAncho, 0.28, `rgba(150,90,230,${0.3 + 0.3 * pulso})`, "#b08cff", 1.5);
+    // Círculos de telegrafía de los rayos: el anillo amarillo se encoge hasta el momento del golpe
+    rayosPend.forEach(r => {
+      const t = Math.min(1, (ahora - r.creado) / (r.golpeA - r.creado));
+      const pr = 0.5 + 0.5 * Math.sin(ahora / (140 - 90 * t));
+      discoPiso(r.x, r.y, r.r, `rgba(255,70,50,${0.12 + 0.3 * t})`, `rgba(255,${110 + 90 * pr},60,${0.6 + 0.4 * t})`, 2 + 2 * t);
+      discoPiso(r.x, r.y, Math.max(0.05, r.r * (1 - t)), null, "rgba(255,240,140,.95)", 2.2);
+    });
+    charcos.forEach(ch => {
+      if (ahora < ch.inicio + 900) {
+        const k = (ahora - ch.inicio) / 900;
+        discoPiso(ch.x, ch.y, ch.r, `rgba(255,120,60,${0.12 + 0.2 * k})`, "rgba(255,90,40,.9)", 2);
+      } else {
+        discoPiso(ch.x, ch.y, ch.r, "rgba(120,30,90,.55)", "rgba(230,80,180,.9)", 2);
+      }
+    });
+    marcasRayo.forEach(m => {
+      const a = 1 - (ahora - m.t) / 900;
+      discoPiso(m.x, m.y, m.r, `rgba(20,14,10,${0.55 * a})`, `rgba(8,6,4,${0.4 * a})`, 1);
+    });
+    ondas.forEach(o => {
+      const p = (ahora - o.t0) / o.dur, r = o.r0 + (o.r1 - o.r0) * p;
+      discoPiso(o.x, o.y, Math.max(0.1, r), null, "rgba(255,200,120,.85)", 3);
+    });
+    enemigos.forEach(en => {
+      if (!en.esColiseo || !en.aviso) return;
+      const av = en.aviso, alfa = 0.35 + 0.3 * pulso;
+      if (av.tipo === "embestida") {
+        const [ax, ay] = P(en.x, en.y, 0), [bx, by] = P(en.x + av.dx * 7, en.y + av.dy * 7, 0);
+        c.lineCap = "round";
+        c.lineWidth = 16; c.strokeStyle = `rgba(255,60,60,${alfa * 0.5})`; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+        c.lineWidth = 3; c.strokeStyle = `rgba(255,60,60,${alfa + 0.3})`; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+      } else if (av.tipo === "abanico") {
+        const pts = [[en.x, en.y]];
+        for (let i = 0; i <= 8; i++) { const a = av.ang - 0.5 + i / 8; pts.push([en.x + Math.cos(a) * 7, en.y + Math.sin(a) * 7]); }
+        poli(pts.map(([x, y]) => P(x, y, 0)), `rgba(255,80,80,${alfa * 0.4})`, `rgba(255,80,80,${alfa})`, 2);
+      } else if (av.tipo === "puntos") {
+        av.pts.forEach(([x, y]) => discoPiso(x, y, 1.0, `rgba(255,90,60,${alfa * 0.5})`, `rgba(255,90,60,${alfa + 0.3})`, 2));
+      } else if (av.tipo === "onda") {
+        // Anillo de aviso con el hueco seguro sin dibujar
+        const pts = [];
+        for (let i = 0; i <= 40; i++) {
+          const a = av.hueco + 0.62 + (i / 40) * (TAU - 1.24);
+          pts.push(P(en.x + Math.cos(a) * 10, en.y + Math.sin(a) * 10, 0));
+        }
+        c.lineWidth = 5; c.strokeStyle = `rgba(255,70,70,${alfa + 0.3})`; c.beginPath();
+        pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+        const [hx, hy] = P(en.x + Math.cos(av.hueco) * 10, en.y + Math.sin(av.hueco) * 10, 0);
+        c.beginPath(); c.arc(hx, hy, 7, 0, TAU); c.fillStyle = "rgba(120,255,160,.55)"; c.fill();
+      } else if (av.tipo === "radial" || av.tipo === "rayos") {
+        discoPiso(en.x, en.y, 1.6 + 0.4 * pulso, null, `rgba(255,120,200,${alfa})`, 2);
+      }
+    });
+  }
+  function dibujarGranHocico(en) {
+    const f = granHocicoFase(en);
+    const [sx, sy] = P(en.x, en.y, 0);
+    const salto = en.mov ? Math.abs(Math.sin(en.paso)) * 5 : Math.abs(Math.sin((en.bob || 0) * 2)) * 2;
+    const cx = sx, cy = sy - 58 - salto * 1.3;
+    c.save();
+    c.translate(cx, cy); c.scale(1.3, 1.3); c.translate(-cx, -cy);
+    c.beginPath(); c.ellipse(sx, sy - 12, 50, 18, 0, 0, TAU); c.fillStyle = "rgba(0,0,0,.28)"; c.fill();
+    if (f === 3) {
+      const gl = c.createRadialGradient(cx, cy, 20, cx, cy, 80);
+      gl.addColorStop(0, "rgba(255,60,60,.28)"); gl.addColorStop(1, "rgba(255,60,60,0)");
+      c.fillStyle = gl; c.beginPath(); c.arc(cx, cy, 80, 0, TAU); c.fill();
+    }
+    const paso = en.mov ? Math.sin(en.paso) * 4 : 0;
+    [-26, -10, 10, 26].forEach((dx, i) => rr(c, cx + dx - 7, cy + 24 + (i % 2 ? paso : -paso), 14, 20, 6, "#c96f86"));
+    [-1, 1].forEach(lado => {
+      c.beginPath();
+      c.moveTo(cx + lado * 30, cy - 20);
+      c.quadraticCurveTo(cx + lado * 66, cy - 34, cx + lado * 56, cy + 6);
+      c.quadraticCurveTo(cx + lado * 44, cy - 4, cx + lado * 30, cy - 4);
+      c.closePath(); c.fillStyle = "#e58aa0"; c.fill(); c.lineWidth = 2; c.strokeStyle = "#7a3346"; c.stroke();
+    });
+    const cuerpo = c.createRadialGradient(cx - 12, cy - 12, 6, cx, cy, 48);
+    cuerpo.addColorStop(0, "#ffd3dc"); cuerpo.addColorStop(0.55, "#f29bb0"); cuerpo.addColorStop(1, "#c4637f");
+    c.beginPath(); c.ellipse(cx, cy, 46, 34, 0, 0, TAU); c.fillStyle = cuerpo; c.fill();
+    c.lineWidth = 2; c.strokeStyle = "#7a3346"; c.stroke();
+    c.beginPath(); c.ellipse(cx + 20, cy - 16, 9, 6, 0.4, 0, TAU); c.fillStyle = "rgba(160,60,90,.25)"; c.fill();
+    c.beginPath(); c.ellipse(cx - 4, cy + 12, 24, 12, 0, 0, TAU); c.fillStyle = "rgba(255,255,255,.18)"; c.fill();
+    const ang = Math.atan2(jug.y - en.y, jug.x - en.x), lx = Math.cos(ang) * 2.5, ly = Math.sin(ang) * 1.5;
+    [-16, 16].forEach(dx => {
+      c.beginPath(); c.ellipse(cx + dx + lx, cy - 8 + ly, 4.4, 5.4, 0, 0, TAU); c.fillStyle = "#1a0d12"; c.fill();
+      c.beginPath(); c.arc(cx + dx + lx - 1.4, cy - 10 + ly, 1.4, 0, TAU); c.fillStyle = "#fff"; c.fill();
+    });
+    if (f >= 2) {
+      c.strokeStyle = "#5a2233"; c.lineWidth = 2.4; c.beginPath();
+      c.moveTo(cx - 26, cy - 18); c.lineTo(cx - 8, cy - 13); c.moveTo(cx + 26, cy - 18); c.lineTo(cx + 8, cy - 13); c.stroke();
+    }
+    c.beginPath(); c.ellipse(cx, cy + 6, 18, 13, 0, 0, TAU); c.fillStyle = "#ffb3c3"; c.fill();
+    c.strokeStyle = "#7a3346"; c.lineWidth = 1.8; c.stroke();
+    [-6, 6].forEach(dx => { c.beginPath(); c.ellipse(cx + dx, cy + 6, 2.2, 3, 0, 0, TAU); c.fillStyle = "#7a3346"; c.fill(); });
+    const grita = en.estado === "ataque" && ["radial", "lluvia", "espiral", "relampagos"].includes(en.ataqueActual);
+    if (grita) { c.beginPath(); c.ellipse(cx, cy + 22, 8, 6, 0, 0, TAU); c.fillStyle = "#5a1a2a"; c.fill(); }
+    else { c.beginPath(); c.arc(cx, cy + 16, 7, 0.15 * Math.PI, 0.85 * Math.PI); c.strokeStyle = "#7a3346"; c.lineWidth = 1.6; c.stroke(); }
+    [-1, 1].forEach(lado => {
+      c.beginPath(); c.moveTo(cx + lado * 9, cy + 14); c.lineTo(cx + lado * 12, cy + 25); c.lineTo(cx + lado * 4, cy + 17); c.closePath();
+      c.fillStyle = "#fffaf0"; c.fill(); c.lineWidth = 0.8; c.strokeStyle = "#7a3346"; c.stroke();
+    });
+    c.restore();
+    // Barra de vida y nombre (fuera de la escala)
+    const wB = 130, pct = acotar(en.hp / en.hpMax, 0, 1), yB = cy - 84;
+    rr(c, cx - wB / 2, yB, wB, 9, 3, "rgba(0,0,0,.5)");
+    rr(c, cx - wB / 2, yB, wB * pct, 9, 3, pct > 0.4 ? "#6ee07a" : "#e5534b");
+    c.font = "700 13px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    const txt = "Gran Hocico · Jefe final", w = c.measureText(txt).width + 16;
+    rr(c, cx - w / 2, yB - 22, w, 17, 8, "rgba(90,30,50,.9)");
+    c.fillStyle = "#ffe9ef"; c.fillText(txt, cx, yB - 13.5);
+  }
+  function dibujarVerity() {
+    const [px, py] = P(verity.x, verity.y, 1.1 + Math.sin(verity.bob) * 0.12);
+    const [sx, sy] = P(verity.x, verity.y, 0);
+    c.beginPath(); c.ellipse(sx, sy, 9, 4, 0, 0, TAU); c.fillStyle = "rgba(0,0,0,.18)"; c.fill();
+    const r = 12;
+    const g = c.createRadialGradient(px - 4, py - 4, 2, px, py, r);
+    g.addColorStop(0, "#fff7a6"); g.addColorStop(0.6, "#ffd21f"); g.addColorStop(1, "#d9a300");
+    c.beginPath(); c.arc(px, py, r, 0, TAU); c.fillStyle = g; c.fill();
+    c.lineWidth = 1.5; c.strokeStyle = "#8a6400"; c.stroke();
+    c.fillStyle = "#3a2a00";
+    c.beginPath(); c.ellipse(px - 4, py - 2, 1.4, 2.2, 0, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(px + 4, py - 2, 1.4, 2.2, 0, 0, TAU); c.fill();
+    c.beginPath(); c.arc(px, py, 5.5, 0.2 * Math.PI, 0.8 * Math.PI); c.strokeStyle = "#3a2a00"; c.lineWidth = 1.6; c.stroke();
+  }
+  function dibujarRayoCielo(r, ahora) {
+    const alfa = 1 - (ahora - r.t) / 380;
+    const [gx, gy] = P(r.x, r.y, 0), [tx, ty] = P(r.x, r.y, 14);
+    const pasos = 9;
+    const pts = [];
+    for (let i = 0; i <= pasos; i++) {
+      const t = i / pasos, jit = i === 0 || i === pasos ? 0 : (Math.random() - 0.5) * 22;
+      pts.push([tx + (gx - tx) * t + jit, ty + (gy - ty) * t]);
+    }
+    c.lineCap = "round"; c.globalAlpha = Math.max(0, alfa);
+    c.lineWidth = 14; c.strokeStyle = "rgba(255,240,150,.45)"; c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+    c.lineWidth = 3; c.strokeStyle = "#ffffff"; c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke();
+    c.beginPath(); c.ellipse(gx, gy, r.r * 0.9 * (1 + (1 - alfa) * 0.4), r.r * 0.5, 0, 0, TAU); c.fillStyle = `rgba(255,250,200,${0.6 * alfa})`; c.fill();
+    c.globalAlpha = 1;
+  }
+  function dibujarEspectador(e, ahora) {
+    const [px, py0] = P(e.x, e.y, e.z);
+    const py = py0 - Math.abs(Math.sin(ahora / 260 + e.ph)) * 3;
+    rr(c, px - 5, py - 12, 10, 11, 3, e.ropa);
+    c.beginPath(); c.arc(px, py - 15, 4, 0, TAU); c.fillStyle = e.piel; c.fill();
+  }
+  function pushColiseoDyn(dyn) {
+    const ahora = performance.now();
+    rayosCielo.forEach(r => dyn.push({ k: r.x + r.y + 0.6, h: 99, fn: () => dibujarRayoCielo(r, performance.now()) }));
+    balasJefe.forEach(b => dyn.push({ k: b.x + b.y + 0.4, h: 97, fn: () => {
+      const [px, py] = P(b.x, b.y, 0.5);
+      c.beginPath(); c.arc(px, py, 4.5, 0, TAU); c.fillStyle = b.col; c.fill();
+      c.lineWidth = 1.5; c.strokeStyle = "rgba(60,0,40,.6)"; c.stroke();
+    } }));
+    if (performance.now() < jug.dashHasta) {
+      dyn.push({ k: jug.x + jug.y - 0.02, h: 98, fn: () => {
+        const [px, py] = P(jug.x, jug.y, 0.2);
+        c.beginPath(); c.ellipse(px, py, 22, 10, 0, 0, TAU); c.fillStyle = "rgba(120,220,255,.35)"; c.fill();
+        c.lineWidth = 2; c.strokeStyle = "rgba(170,240,255,.9)"; c.stroke();
+      } });
+    }
+    if (verity.ok) dyn.push({ k: verity.x + verity.y + 0.03, h: 101, fn: dibujarVerity });
+  }
+
+  /* ----- Construcción del muro, las gradas, el campo, la estatua y el portal ----- */
+  function muroColiseo(x0, y0, x1, y1, h, col) {
+    solidos.push([x0, y0, x1, y1]);
+    const vertical = (y1 - y0) >= (x1 - x0), L = vertical ? (y1 - y0) : (x1 - x0), n = Math.max(1, Math.round(L));
+    for (let i = 0; i < n; i++) {
+      const t0 = (i * L) / n, t1 = ((i + 1) * L) / n;
+      const ax = vertical ? x0 : x0 + t0, ay = vertical ? y0 + t0 : y0;
+      const w = vertical ? x1 - x0 : t1 - t0, d = vertical ? t1 - t0 : y1 - y0;
+      agregar(ax + w / 2, ay + d / 2, h, () => caja(ax, ay, w, d, 0, h, col));
+    }
+  }
+  function construirColiseo() {
+    // Muro que separa el patio del coliseo, con el hueco-portal en medio
+    [[0, SEP.gapX], [SEP.gapX + SEP.gapAncho, W]].forEach(([a, b]) => muroColiseo(a, SEP.y - 0.1, b, SEP.y + 0.1, 2.7, "#7f786a"));
+    [SEP.gapX, SEP.gapX + SEP.gapAncho].forEach(x => muroColiseo(x - 0.15, SEP.y - 0.2, x + 0.15, SEP.y + 0.2, 3.2, "#5b3a7a"));
+    // Muro exterior del coliseo
+    muroColiseo(COL.x0 - 0.3, COL.y0, COL.x0, COL.y1 + 0.3, 2.4, "#8d8778");
+    muroColiseo(COL.x1, COL.y0, COL.x1 + 0.3, COL.y1 + 0.3, 2.4, "#8d8778");
+    muroColiseo(COL.x0 - 0.3, COL.y1, COL.x1 + 0.3, COL.y1 + 0.3, 2.4, "#8d8778");
+    // Gradas: escalones sólidos con franja de asientos de color
+    GRADAS.forEach(gr => {
+      const w = gr.x1 - gr.x0, d = gr.y1 - gr.y0;
+      const publico = espectadores.filter(e => e.grada === gr);
+      solidos.push([gr.x0, gr.y0, gr.x1, gr.y1]);
+      agregar((gr.x0 + gr.x1) / 2, (gr.y0 + gr.y1) / 2, gr.h, () => {
+        caja(gr.x0, gr.y0, w, d, 0, gr.h, "#6b5c48");
+        caja(gr.x0 + 0.07, gr.y0 + 0.07, w - 0.14, d - 0.14, gr.h, 0.05, "#b5473a");
+        const ahora = performance.now();
+        publico.forEach(e => dibujarEspectador(e, ahora));
+      });
+    });
+    // Columnas dentro del campo
+    [[7.5, 41], [7.5, 55], [24.5, 41], [24.5, 55]].forEach(([x, y]) => {
+      solidos.push([x - 0.35, y - 0.35, x + 0.35, y + 0.35]);
+      agregar(x, y, 2.2, () => cil(x, y, 0.35, 0, 2.2, "#e8e0cc"));
+    });
+    // Piso de arena del coliseo y del campo
+    decals.push(() => {
+      rectPiso(COL.x0, COL.y0, COL.x1 - COL.x0, COL.y1 - COL.y0, "#c9a86f", "#8a6a3b", 2);
+      rectPiso(PF.x0, PF.y0, PF.x1 - PF.x0, PF.y1 - PF.y0, "#d9bb84", "#9a7642", 2);
+      discoPiso(COL_CX, COL_CY, 9, null, "rgba(120,82,40,.45)", 2);
+      discoPiso(COL_CX, COL_CY, 2.4, "rgba(190,150,90,.5)", "rgba(120,82,40,.5)", 1.5);
+    });
+    decals.push(dibujarSueloColiseo);
+    // Estatua de invocación
+    solidos.push([ESTATUA.x - 0.45, ESTATUA.y - 0.45, ESTATUA.x + 0.45, ESTATUA.y + 0.45]);
+    agregar(ESTATUA.x, ESTATUA.y, 2.6, () => {
+      const pulso = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+      caja(ESTATUA.x - 0.5, ESTATUA.y - 0.5, 1, 1, 0, 0.35, "#b9ae97");
+      cil(ESTATUA.x, ESTATUA.y, 0.32, 0.35, 1.6, "#d8cfb8");
+      cil(ESTATUA.x, ESTATUA.y, 0.3, 1.95, 0.3, "#d8cfb8");
+      const [gx, gy] = P(ESTATUA.x, ESTATUA.y, 2.9);
+      const gr = c.createRadialGradient(gx, gy, 2, gx, gy, 28 + pulso * 8);
+      gr.addColorStop(0, "rgba(200,160,255,.9)"); gr.addColorStop(1, "rgba(150,90,255,0)");
+      c.fillStyle = gr; c.beginPath(); c.arc(gx, gy, 28 + pulso * 8, 0, TAU); c.fill();
+      esfera(ESTATUA.x, ESTATUA.y, 2.9 + pulso * 0.08, 0.2, "#b58cff");
+    });
+  }
+
+  /* ===================================================================================
+     PRIMER PISO Y SÓTANO (plano de la escuela a escala K). El primer piso va debajo del
+     mundo original y el sótano más abajo, así que desde el lobby, el patio y el coliseo
+     no se ven. Coordenadas del plano: x 0–32, y 0–34; PL/RECT las pasan al mundo.
+     =================================================================================== */
+  const K = 1.5;                                          // escala del plano
+  const FY = 120;                                         // el primer piso va debajo del mundo original
+  const PW = 32 * K, PH = 34 * K;                         // tamaño del primer piso en el mundo
+  const FYS = FY + PH + 20;                               // el sótano va más abajo, lejos de todo lo demás
+  const SOTANO = { x0: 0, y0: FYS, x1: 48, y1: FYS + 30 };          // sala de estudio (con la rola)
+  const FYS2 = FYS + 40;
+  const SOTANO2 = { x0: 0, y0: FYS2, x1: 48, y1: FYS2 + 20 };      // Mensajería Hora Vive, bajando por las escaleras chicas del salón de abajo a la derecha
+  const PISO1_COL = "#e9e2d0", PISO1_TECHO = 2.7;
+  const PL = (x, y) => [x * K, FY + y * K];               // punto del plano -> mundo
+  const RECT = (x0, y0, x1, y1) => [x0 * K, FY + y0 * K, x1 * K, FY + y1 * K];   // rectángulo del plano -> mundo
+  const LLEGADA_PISO1 = { x: 27.9, y: FY + 32.9 * K };    // al subir: frente a las escaleras del sótano
+  const LLEGADA_LOBBY = { x: 2.0, y: 15.4 };              // al bajar del primer piso: junto a la escalera del lobby
+  const LLEGADA_SALA = { x: 41, y: FYS + 9.2 };            // al bajar por las escaleras grandes del primer piso
+  const LLEGADA_SOTANO = { x: 9, y: FYS2 + 9.2 };          // al bajar por las escaleras chicas del salón de abajo a la derecha
+  const LLEGADA_SALON_ABAJO = { x: 43.0, y: FY + 33.6 * K }; // al subir desde Mensajería: frente a las escaleras del salón de abajo a la derecha
+  const SUBIR_LOBBY = { id: "subir-primer-piso", nombre: "al primer piso", etiquetaAccion: "Subir",
+    zona: [0.0, 13.0, 4.2, 15.6], ancla: [2.0, 14.6], alHablar: () => empezarTransicion("primerPiso") };
+  const BAJADA1 = { id: "bajada-1", nombre: "al lobby", etiquetaAccion: "Bajar",
+    zona: [0.9, FY + 24.4, 4.0, FY + 30.6], ancla: [2.6, FY + 27.6], alHablar: () => empezarTransicion("lobby") };
+  const BAJADA2 = { id: "bajada-2", nombre: "al lobby", etiquetaAccion: "Bajar",
+    zona: [0.9, FY + 31.0, 4.0, FY + 36.5], ancla: [2.6, FY + 33.6], alHablar: () => empezarTransicion("lobby") };
+  const BAJAR_SOTANO = { id: "bajar-sotano", nombre: "a la sala de estudio", etiquetaAccion: "Bajar",
+    zona: [21.5, FY + 48.0, 34.5, FY + PH], ancla: [LLEGADA_PISO1.x, LLEGADA_PISO1.y], alHablar: () => empezarTransicion("salaEstudio") };
+  const SUBIR_SOTANO = { id: "subir-desde-sotano", nombre: "al primer piso", etiquetaAccion: "Subir",
+    zona: [35, FYS + 6.5, 47, FYS + 11], ancla: [41, FYS + 8.6], alHablar: () => empezarTransicion("primerPiso") };
+  const BAJAR_MENSAJERIA = { id: "bajar-mensajeria", nombre: "a Mensajería Hora Vive", etiquetaAccion: "Bajar",
+    zona: [41.3, FY + 31.4 * K, 45.0, FY + 33.2 * K], ancla: [43.0, FY + 32.4 * K], alHablar: () => empezarTransicion("sotano") };
+  const SUBIR_SOTANO2 = { id: "subir-desde-sotano2", nombre: "al primer piso", etiquetaAccion: "Subir",
+    zona: [3, FYS2 + 6.5, 15, FYS2 + 11], ancla: [9, FYS2 + 8.6], alHablar: () => empezarTransicion("salonAbajo") };
+  const INTERACTIVOS_ESCALERA = [SUBIR_LOBBY, BAJADA1, BAJADA2, BAJAR_SOTANO, SUBIR_SOTANO, BAJAR_MENSAJERIA, SUBIR_SOTANO2];
+  // Estudiantes que caminan en bucle por los pasillos del primer piso (rutas en coordenadas del mundo)
+  const rutaDe = pts => pts.map(([x, y]) => PL(x, y));
+  const CAMINANTES_P1 = [
+    { ruta: rutaDe([[13.0, 12.9], [13.0, 32.8], [13.6, 32.8], [13.6, 12.9]]), vel: 1.6, t0: 0, sem: 101 },
+    { ruta: rutaDe([[13.0, 12.9], [13.0, 32.8], [13.6, 32.8], [13.6, 12.9]]), vel: 1.2, t0: 9, sem: 102 },
+    { ruta: rutaDe([[25.9, 12.9], [25.9, 32.8], [26.6, 32.8], [26.6, 12.9]]), vel: 1.5, t0: 4, sem: 103 },
+    { ruta: rutaDe([[25.9, 12.9], [25.9, 32.8], [26.6, 32.8], [26.6, 12.9]]), vel: 1.9, t0: 15, sem: 104 }
+  ].map(w => ({ ...w, ap: avatarAleatorio(w.sem) }));
+  // Muro como línea larga (una colisión y una pieza visual por tramo), en coordenadas del mundo
+  function muroLinea(x1, y1, x2, y2, h = PISO1_TECHO, col = PISO1_COL) {
+    const t = 0.2, horiz = Math.abs(y2 - y1) < 1e-6;
+    const xa = Math.min(x1, x2), xb = Math.max(x1, x2), ya = Math.min(y1, y2), yb = Math.max(y1, y2);
+    const ox = horiz ? xa : xa - t / 2, oy = horiz ? ya - t / 2 : ya;
+    const w = horiz ? xb - xa : t, d = horiz ? t : yb - ya;
+    solidos.push([ox, oy, ox + w, oy + d]);
+    agregar(ox + w / 2, oy + d / 2, h, () => caja(ox, oy, w, d, 0, h, col));
+  }
+  // Tramos [x1, y1, x2, y2] en coordenadas del plano
+  function muros(lista, h = PISO1_TECHO, col = PISO1_COL) {
+    lista.forEach(([a, b, e, f]) => { const p = PL(a, b), q = PL(e, f); muroLinea(p[0], p[1], q[0], q[1], h, col); });
+  }
+  function alumnoSentado(x, y, dir, sem) {
+    const ap = avatarAleatorio(sem);
+    agregar(x, y, 1.5, () => { const [px, py] = P(x, y); dibujarAvatar(c, ap, { x: px, y: py + 6, dir, sentado: true, esc: 0.92 }); });
+  }
+  // Salón con pizarrón y 3 columnas de mesas; cada mesa tiene un alumno sentado (6 o más por salón)
+  function salonMesas(x0, y0, x1, y1, sem) {
+    const [a, b, c2, d] = RECT(x0, y0, x1, y1), w = c2 - a, h = d - b;
+    agregar((a + c2) / 2, b + 0.5, 1.4, () => caja(a + 0.8, b + 0.35, w - 1.6, 0.16, 0.9, 0.7, "#2f4a3a"));
+    const filas = Math.floor((h - 3.8) / 2.2) + 1;
+    let k = sem;
+    for (let r = 0; r < filas; r++) {
+      const ry = b + 1.6 + r * 2.2;
+      [0, 1, 2].forEach(ci => {
+        const dx = a + 0.8 + ci * 2.2;
+        if (dx + 1.3 > c2) return;
+        agregar(dx + 0.65, ry + 0.4, 1.4, () => caja(dx, ry, 1.3, 0.8, 0, 0.9, "#c9a878"));
+        alumnoSentado(dx + 0.65, ry + 1.3, "up", k++);
+      });
+    }
+  }
+  function posCaminante(w, ahora) {
+    const R = w.ruta, n = R.length;
+    let total = 0; for (let i = 0; i < n; i++) { const a = R[i], b = R[(i + 1) % n]; total += Math.hypot(b[0] - a[0], b[1] - a[1]); }
+    const s = ((ahora / 1000) * w.vel + w.t0) % total;
+    let acc = 0;
+    for (let i = 0; i < n; i++) {
+      const a = R[i], b = R[(i + 1) % n], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (s <= acc + L || i === n - 1) {
+        const f = L ? (s - acc) / L : 0, dx = b[0] - a[0], dy = b[1] - a[1];
+        return { x: a[0] + dx * f, y: a[1] + dy * f, dir: Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "up" : "down"), paso: s * 6 };
+      }
+      acc += L;
+    }
+  }
+  function pushPiso1Dyn(dyn) {
+    const ahora = performance.now();
+    CAMINANTES_P1.forEach(w => {
+      const p = posCaminante(w, ahora), x = p.x, y = p.y;
+      dyn.push({ k: x + y + 0.02, h: 99, fn: () => { const [px, py] = P(x, y, 0); dibujarAvatar(c, w.ap, { x: px, y: py, dir: p.dir, mov: true, paso: p.paso }); } });
+    });
+  }
+  function construirSalaEstudio() {
+    const { x0, y0, x1, y1 } = SOTANO;
+    decals.push(() => rectPiso(x0, y0, x1 - x0, y1 - y0, "#8f8c86", PAL.junta, 1));
+    muroLinea(x0, y0, x1, y0); muroLinea(x0, y1, x1, y1); muroLinea(x0, y0, x0, y1); muroLinea(x1, y0, x1, y1);
+    // Estantes contra la pared norte
+    [[4, FYS + 1.2, 6, 1.6], [12, FYS + 1.2, 6, 1.6], [20, FYS + 1.2, 6, 1.6], [28, FYS + 1.2, 6, 1.6]].forEach(([x, y, w, d]) => {
+      solidos.push([x, y, x + w, y + d]);
+      agregar(x + w / 2, y + d / 2, 1.6, () => caja(x, y, w, d, 0, 1.5, "#8d6e4f"));
+    });
+    // Mesas de estudio, cada una con cuatro alumnos
+    [[8, FYS + 11], [16, FYS + 11], [24, FYS + 11], [32, FYS + 11], [12, FYS + 21], [24, FYS + 21], [36, FYS + 21]].forEach(([x, y], i) => {
+      mesaRedonda("sala-mesa-" + i, x, y, 0.9, "#2f7d57");
+      asientosDe["sala-mesa-" + i].forEach(([sx, sy, l], j) => alumnoSentado(sx, sy, l === "N" ? "down" : "up", 900 + i * 10 + j));
+    });
+    // Escaleras que suben al primer piso
+    escaleras(38, FYS + 2, 6, 4);
+    decals.push(() => {
+      c.save(); c.font = "600 12px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#f2f0ea";
+      const [a1, b1] = P(24, FYS + 27.5, 0), [a2, b2] = P(41, FYS + 1.2, 0);
+      c.fillText("Sala de estudio", a1, b1); c.fillText("Escaleras al primer piso", a2, b2);
+      c.restore();
+    });
+  }
+  function construirSotano2() {
+    const { x0, y0, x1, y1 } = SOTANO2;
+    decals.push(() => rectPiso(x0, y0, x1 - x0, y1 - y0, "#5c5a57", PAL.junta, 1));
+    muroLinea(x0, y0, x1, y0); muroLinea(x0, y1, x1, y1); muroLinea(x0, y0, x0, y1); muroLinea(x1, y0, x1, y1);
+    // Cajas de bodega (lejos de la escalera)
+    [[18, FYS2 + 6, 2.2, 2.0], [22, FYS2 + 6, 2.2, 2.0], [30, FYS2 + 6, 2.2, 2.0], [34, FYS2 + 12, 4.6, 1.4]].forEach(([x, y, w, d]) => {
+      solidos.push([x, y, x + w, y + d]);
+      agregar(x + w / 2, y + d / 2, 1.6, () => caja(x, y, w, d, 0, 1.5, "#8d6e4f"));
+    });
+    // Escaleras que suben al salón de abajo a la derecha del primer piso
+    escaleras(6, FYS2 + 2, 6, 4);
+    decals.push(() => {
+      c.save(); c.font = "600 12px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#f2f0ea";
+      const [a1, b1] = P(24, FYS2 + 1.4, 0), [a2, b2] = P(12, FYS2 + 1.2, 0);
+      c.fillText("Mensajería Hora Vive", a1, b1); c.fillText("Escaleras al primer piso", a2, b2);
+      c.restore();
+    });
+  }
+  function construirPiso1() {
+    const HB = mundo.alturaBase || H;
+    // Barrera invisible al sur del mundo original: el coliseo sigue cerrado y no hay paso al vacío de abajo
+    solidos.push([-0.3, HB - 0.2, W + 0.3, HB + 0.4]);
+
+    // Suelos por zona (estacionamiento, jardín, pasillos, salones, cafetería, tiendas)
+    const zonas = [
+      [0, 0, 32, 6, "#7d8389"], [0, 6, 32, 6, "#7fb070"],
+      [9.9, 12, 27.2, 34, "#e8e1cf"], [0, 12, 4.9, 34, "#e8e1cf"],
+      [4.9, 12, 9.9, 16.7, "#cfe0e8"], [4.9, 16.7, 9.9, 22.5, "#cfe0e8"], [4.9, 22.5, 9.9, 27.4, "#cfe0e8"], [4.9, 27.4, 9.9, 34, "#f0d9b5"],
+      [27.2, 12, 32, 16.5, "#cfe0e8"], [27.2, 16.5, 32, 22, "#cfe0e8"], [27.2, 22, 32, 28.3, "#cfe0e8"], [27.2, 28.3, 32, 34, "#cfe0e8"],
+      [14.0, 12, 22.9, 15.5, "#d8d2e6"], [14.4, 18, 18.5, 21.4, "#f3c9c0"], [18.7, 18, 23.0, 21.4, "#f7e2b8"]
+    ];
+    decals.push(() => {
+      rectPiso(0, FY, PW, PH, PAL.piso, PAL.junta, 1);
+      zonas.forEach(([x0, y0, x1, y1, col]) => { const [a, b, c2, d] = RECT(x0, y0, x1, y1); rectPiso(a, b, c2 - a, d - b, col, PAL.junta, 1); });
+    });
+
+    // Rótulos del plano (texto en el suelo)
+    const ROTULOS_P1 = [
+      [16, 3.0, "Estacionamiento"], [5.75, 8.4, "Árboles"], [16.5, 8.7, "Árboles"], [27.25, 8.6, "Árboles"],
+      [16.8, 5.5, "Silla de guardado"], [12.0, 10.6, "Salida"], [18.8, 10.6, "Puerta"], [25.2, 10.6, "Salida"],
+      [2.4, 28.5, "Balcón"], [2.2, 11.2, "Sillas y mesas"],
+      [7.4, 14.9, "Salón"], [7.4, 19.5, "Salón"], [7.4, 25.0, "Salón"], [7.4, 32.4, "Cafetería"],
+      [29.6, 14.2, "Salón"], [29.6, 19.2, "Salón"], [29.6, 25.2, "Salón"], [29.6, 31.2, "Salón"],
+      [18.45, 13.6, "Cuarto de admisiones"], [20.7, 17.2, "Escaleras 2do piso"],
+      [16.4, 19.8, "OXXO"], [20.85, 19.8, "Creamio (vende malteadas)"], [25.0, 25.0, "Televisor grande"],
+      [18.5, 22.4, "Explanada con sofás y sillas"], [18.6, 33.4, "Escaleras a la sala de estudio"], [28.6, 35.4, "Escaleras a Mensajería Hora Vive"]
+    ];
+    decals.push(() => {
+      c.save(); c.font = "600 12px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#2a2f2c";
+      ROTULOS_P1.forEach(([x, y, t]) => { const [wx, wy] = PL(x, y); const [px, py] = P(wx, wy, 0); c.fillText(t, px, py); });
+      c.restore();
+    });
+
+    // Muros: perímetro, mureta del estacionamiento, fachada con salidas y puerta, columnas y salones
+    muros([
+      [0, 0, 32, 0], [0, 34, 32, 34], [0, 0, 0, 34], [32, 0, 32, 34],
+      [0, 6, 32, 6],
+      [0, 12, 10.7, 12], [13.4, 12, 17.7, 12], [19.9, 12, 23.8, 12], [26.6, 12, 32, 12],
+      [4.9, 12, 4.9, 14.2], [4.9, 15.2, 4.9, 30], [4.9, 31, 4.9, 34],
+      [9.9, 12, 9.9, 13.8], [9.9, 14.8, 9.9, 19.0], [9.9, 20.0, 9.9, 24.5], [9.9, 25.5, 9.9, 30], [9.9, 31, 9.9, 34],
+      [4.9, 16.7, 9.9, 16.7], [4.9, 22.5, 9.9, 22.5], [4.9, 27.4, 9.9, 27.4],
+      [14.0, 12, 14.0, 15.5], [22.9, 12, 22.9, 15.5], [14.0, 15.5, 22.9, 15.5],
+      [14.4, 18, 18.5, 18], [14.4, 18, 14.4, 21.4], [18.5, 18, 18.5, 21.4], [14.4, 21.4, 15.6, 21.4], [16.6, 21.4, 18.5, 21.4],
+      [18.7, 18, 23.0, 18], [18.7, 18, 18.7, 21.4], [23.0, 18, 23.0, 21.4], [18.7, 21.4, 20.0, 21.4], [21.0, 21.4, 23.0, 21.4],
+      [27.2, 12, 27.2, 13.6], [27.2, 14.6, 27.2, 18.2], [27.2, 19.2, 27.2, 24.0], [27.2, 25.0, 27.2, 30.0], [27.2, 31.0, 27.2, 34],
+      [27.2, 16.5, 32, 16.5], [27.2, 22.0, 32, 22.0], [27.2, 28.3, 32, 28.3]
+    ]);
+    // Televisor grande (tabla delgada y alta)
+    const tv = PL(22.75, 22.7), tv2 = PL(22.75, 27.3);
+    muroLinea(tv[0], tv[1], tv2[0], tv2[1], 1.6, "#1d1f22");
+
+    // Árboles (macetones sólidos)
+    [[2.9, 7.1, 8.6, 9.7], [11.3, 7.8, 21.7, 9.6], [23.8, 7.3, 30.7, 9.9]].forEach(p => {
+      const [x0, y0, x1, y1] = RECT(...p);
+      solidos.push([x0, y0, x1, y1]);
+      agregar((x0 + x1) / 2, (y0 + y1) / 2, 1.6, () => caja(x0, y0, x1 - x0, y1 - y0, 0, 1.4, "#3f8f4f"));
+    });
+    // Silla de guardado (banca), junto a la mureta del estacionamiento
+    const sg = PL(14.8, 6.3);
+    sofa("p1-silla-guardado", sg[0], sg[1], 4.0 * K, "#8a6b4f");
+
+    // Bajadas hacia el lobby: cajas sólidas junto a la columna izquierda
+    [[3.1, 17.7, 4.9, 19.3], [2.8, 20.9, 4.9, 22.5]].forEach(p => {
+      const [x0, y0, x1, y1] = RECT(...p);
+      solidos.push([x0, y0, x1, y1]);
+      agregar((x0 + x1) / 2, (y0 + y1) / 2, 2.0, () => caja(x0, y0, x1 - x0, y1 - y0, 0, 2.0, "#8d8577"));
+    });
+
+    // Mesas de la columna izquierda y plantas del balcón
+    const m1 = PL(1.8, 13.2), m2 = PL(1.8, 15.6);
+    mesaRedonda("p1-mesa-sillas-1", m1[0], m1[1], 0.75, "#c98f52");
+    mesaRedonda("p1-mesa-sillas-2", m2[0], m2[1], 0.75, "#c98f52");
+    const pl1 = PL(1.2, 25.0), pl2 = PL(3.6, 30.6);
+    planta(pl1[0], pl1[1], 1.1); planta(pl2[0], pl2[1], 1.1);
+
+    // Salones con 6 mesas y alumnos sentados (columna izquierda y derecha)
+    salonMesas(4.9, 12, 9.9, 16.7, 500);
+    salonMesas(4.9, 16.7, 9.9, 22.5, 520);
+    salonMesas(4.9, 22.5, 9.9, 27.4, 540);
+    salonMesas(27.2, 12, 32, 16.5, 560);
+    salonMesas(27.2, 16.5, 32, 22, 580);
+    salonMesas(27.2, 22, 32, 28.3, 600);
+    salonMesas(27.2, 28.3, 32, 34, 620);
+
+    // Cafetería: cuatro mesas con cuatro alumnos cada una
+    [[9.6, FY + 43.5], [12.6, FY + 43.5], [9.6, FY + 48.0], [12.6, FY + 48.0]].forEach(([x, y], i) => {
+      mesaRedonda("p1-cafe-" + i, x, y, 0.9, "#2f7d57");
+      asientosDe["p1-cafe-" + i].forEach(([sx, sy, l], j) => alumnoSentado(sx, sy, l === "N" ? "down" : "up", 700 + i * 10 + j));
+    });
+
+    // Explanada: sofás y mesas redondas repartidas por toda la zona central
+    const sx1 = PL(14.6, 23.0), sx2 = PL(19.2, 23.0);
+    sofa("p1-sofa-a", sx1[0], sx1[1], 3.0 * K, "#5b6e8a");
+    sofa("p1-sofa-b", sx2[0], sx2[1], 3.0 * K, "#8a5b6e");
+    [[11.3, 14.5], [11.3, 17.5], [11.3, 20.5], [11.3, 23.5], [11.3, 26.5], [11.3, 29.5], [11.3, 32.3],
+     [24.0, 14.5], [24.0, 17.5], [24.0, 20.5], [24.0, 23.5], [24.0, 26.5], [24.0, 29.5], [24.0, 32.3],
+     [16.5, 25.2], [19.8, 25.2]].forEach(([x, y], i) => {
+      const [mx, my] = PL(x, y);
+      mesaRedonda("p1-mesa-" + i, mx, my, 0.9, "#2f7d57");
+    });
+
+    // Escaleras: al 2do piso (solo decoración) y al sótano (bajan por aquí)
+    const e2 = RECT(18.4, 16.5, 23.0, 18.0);
+    escaleras(e2[0], e2[1], e2[2] - e2[0], e2[3] - e2[1]);
+    const eb = RECT(14.8, 28.8, 22.5, 32.0);
+    escaleras(eb[0], eb[1], eb[2] - eb[0], eb[3] - eb[1]);
+
+    // Escaleras chicas en el salón de abajo a la derecha que bajan a Mensajería Hora Vive
+    const emsg = RECT(27.9, 31.6, 29.6, 33.0);
+    escaleras(emsg[0], emsg[1], emsg[2] - emsg[0], emsg[3] - emsg[1]);
+    construirSalaEstudio();
+    construirSotano2();
+  }
   const asientosDe = {};                               // id espacio -> [[x,y,lado]]
 
   function silla(x, y, lado, col, taburete = false) {
@@ -1226,17 +2111,13 @@ function montar(raiz, opciones = {}) {
   function planta(x, y, s = 1, solido = true) {
     agregar(x, y, 1 + s, () => {
       cil(x, y, 0.22, 0, 0.36, "#8d9296");
-      if (modo === "iso") {
-        cil(x, y, 0.035, 0.36, 0.55 * s, "#6b4f32");
-        esfera(x, y, 0.95 * s + 0.2, 0.34 * s, "#3f8f4f"); esfera(x - 0.13, y + 0.1, 0.72 * s + 0.2, 0.3 * s, "#4fa860"); esfera(x + 0.14, y - 0.08, 1.2 * s + 0.2, 0.26 * s, "#2f7a44");
-      } else esfera(x, y, 0, 0.36 * s, "#3f8f4f");
+      esfera(x, y, 0, 0.36 * s, "#3f8f4f");
     });
     if (solido) solidos.push([x - 0.25, y - 0.25, x + 0.25, y + 0.25]);
   }
   function mesaBaja(x, y, r, conPlanta) {
     agregar(x, y, 0.8, () => {
       cil(x, y, 0.05, 0, 0.5, "#2b2d30"); cil(x, y, r, 0.5, 0.05, "#c98f52");
-      if (conPlanta && modo === "iso") { cil(x, y, 0.11, 0.55, 0.14, "#9aa0a4"); esfera(x, y, 0.88, 0.17, "#4fa860"); }
     });
     solidos.push([x - r, y - r, x + r, y + r]);
   }
@@ -1263,18 +2144,12 @@ function montar(raiz, opciones = {}) {
         const sy = y + i * dy, alt = (n - i) * 0.25;
         caja(x, sy, w, dy + 0.02, 0, alt, "#cfc8bb");
       }
-      if (modo === "iso") caja(x + w - 0.06, y, 0.06, d, 0, 1.4, "#9aa0a4"); // pasamanos
     });
     solidos.push([x, y, x + w, y + d]);
   }
   function celosia(x, y, w) {
     agregar(x + w / 2, y + 0.1, 2, () => {
       caja(x, y, w, 0.2, 0, 1.7, "#6a4a32");
-      panelY(x, y + 0.2, 1.7, () => {
-        c.fillStyle = "#b98a5c";
-        for (let i = 0; i < Math.floor(w * 100 / 60); i++) { const u = 18 + i * 60; c.beginPath(); c.moveTo(u, 30); c.lineTo(u + 36, 30); c.lineTo(u + 18, 100); c.closePath(); c.fill(); c.beginPath(); c.moveTo(u, 160); c.lineTo(u + 36, 160); c.lineTo(u + 18, 100); c.closePath(); c.fill(); }
-      });
-      if (modo === "iso") { esfera(x + 0.5, y + 0.1, 2.0, 0.34, "#2f7a44"); esfera(x + w - 0.5, y + 0.1, 2.0, 0.34, "#3f8f4f"); esfera(x + w / 2, y + 0.1, 2.1, 0.3, "#4fa860"); }
     });
     solidos.push([x, y, x + w, y + 0.2]);
   }
@@ -1285,17 +2160,6 @@ function montar(raiz, opciones = {}) {
   function tapete(x, y, r, color) { decals.push(() => discoPiso(x, y, r, color, tono(color, 0.8), 1)); }
   function mural(y0, y1) {
     agregar(0, y1 + 0.5, 3, () => {        // clave de orden mayor que la de los segmentos de pared que cubre
-      panelX(0.01, y1, 2.7, () => {
-        const L = (y1 - y0) * 100;
-        c.fillStyle = "#e4f2e8"; c.fillRect(0, 0, L, 200);
-        c.strokeStyle = "#4caf50"; c.lineWidth = 4; c.strokeRect(2, 2, L - 4, 196);
-        const pill = (x, y, w, h, fill, stroke, txt, col, fs) => { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, h / 2) : c.rect(x, y, w, h); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.lineWidth = 3; c.strokeStyle = stroke; c.stroke(); } c.fillStyle = col; c.font = `700 ${fs}px system-ui, sans-serif`; c.textBaseline = "middle"; c.textAlign = "center"; c.fillText(txt, x + w / 2, y + h / 2 + 2); };
-        pill(30, 22, 200, 56, null, "#4caf50", "Conoce", "#2e8b3d", 34);
-        pill(250, 22, 58, 56, null, "#4caf50", "→", "#2e8b3d", 34);
-        pill(326, 22, 150, 56, "#4caf50", null, "MAPS", "#0d2a1b", 36);
-        pill(30, 96, L - 60, 42, "#6ec14f", null, "Un nuevo modelo educativo flexible", "#0d2a1b", 24);
-        pill(30, 148, 340, 38, "#a5d84a", null, "que se adapta a ti", "#0d2a1b", 22);
-      });
     });
   }
 
@@ -1331,12 +2195,6 @@ function montar(raiz, opciones = {}) {
       // Marco verde de la puerta y número
       agregar(gx0, q.y1, 2.8, () => { caja(gx0 - 0.1, q.y1 - 0.08, 0.1, 0.16, 0, 2.7, "#0f6b45"); });
       agregar(gx1, q.y1, 2.8, () => { caja(gx1, q.y1 - 0.08, 0.1, 0.16, 0, 2.7, "#0f6b45"); });
-      if (q.numero) agregar(gx0 - 0.5, q.y1 + 0.1, 3, () => {
-        panelY(gx0 - 0.9, q.y1 + 0.06, 2.5, () => {
-          c.fillStyle = "#0f6b45"; c.fillRect(0, 0, 70, 210);
-          c.fillStyle = "#eaf6ef"; c.font = "700 46px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(q.numero, 35, 110);
-        });
-      });
       // Pared divisoria derecha del cuarto (cristal), excepto en el borde del mundo
       if (q.x1 < W) for (let y = 0; y < Math.ceil(q.y1); y++) {
         const ya = y, yb = Math.min(q.y1, y + 1);
@@ -1364,27 +2222,17 @@ function montar(raiz, opciones = {}) {
       // Marco verde de la puerta y rótulo
       agregar(gx0, ySep, 2.8, () => { caja(gx0 - 0.1, ySep - 0.08, 0.1, 0.16, 0, 2.7, "#0f6b45"); });
       agregar(gx1, ySep, 2.8, () => { caja(gx1, ySep - 0.08, 0.1, 0.16, 0, 2.7, "#0f6b45"); });
-      agregar(gx0 - 0.5, ySep + 0.1, 3, () => {
-        panelY(gx0 - 0.9, ySep + 0.06, 2.5, () => {
-          c.fillStyle = "#0f6b45"; c.fillRect(0, 0, 70, 210);
-          c.fillStyle = "#eaf6ef"; c.font = "700 24px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
-          c.fillText("PATIO", 35, 110);
-        });
-      });
     }
   }
 
   function construir() {
     // Piso
     decals.push(() => {
-      if (modo === "iso") {
-        const a = P(0, 0), b = P(W, 0), d = P(W, H), e = P(0, H);
-        poli([e, d, [d[0], d[1] + 12], [e[0], e[1] + 12]], PAL.losaIzq); poli([d, b, [b[0], b[1] + 12], [d[0], d[1] + 12]], PAL.losaDer);
-        poli([a, b, d, e], PAL.piso);
-      } else { c.fillStyle = PAL.piso; c.fillRect(0, 0, W * S2, H * S2); }
+      const HB = mundo.alturaBase || H;                  // el suelo del mundo original; el primer piso pone su propio suelo
+      c.fillStyle = PAL.piso; c.fillRect(0, 0, W * S2, HB * S2);
       c.strokeStyle = PAL.junta; c.lineWidth = 1; c.beginPath();
-      for (let i = 0; i <= W; i += 2) { const [x1, y1] = P(i, 0), [x2, y2] = P(i, H); c.moveTo(x1, y1); c.lineTo(x2, y2); }
-      for (let j = 0; j <= H; j += 2) { const [x1, y1] = P(0, j), [x2, y2] = P(W, j); c.moveTo(x1, y1); c.lineTo(x2, y2); }
+      for (let i = 0; i <= W; i += 2) { const [x1, y1] = P(i, 0), [x2, y2] = P(i, HB); c.moveTo(x1, y1); c.lineTo(x2, y2); }
+      for (let j = 0; j <= HB; j += 2) { const [x1, y1] = P(0, j), [x2, y2] = P(W, j); c.moveTo(x1, y1); c.lineTo(x2, y2); }
       c.stroke();
       // Zócalos verdes y área de cuartos
       rectPiso(0, 0, W, 6, PAL.pisoCuartos, null);
@@ -1457,6 +2305,9 @@ function montar(raiz, opciones = {}) {
       }
     });
 
+    construirColiseo();
+    construirPiso1();
+
     // Zonas de interacción, anclas y etiquetas
     espacios.forEach(e => {
       if (e.tipo === "cuarto") {
@@ -1491,8 +2342,8 @@ function montar(raiz, opciones = {}) {
   function paleta() {
     const osc = matchMedia("(prefers-color-scheme: dark)").matches;
     PAL = osc
-      ? { fondo: "#0b1611", piso: "#a8a395", pisoCuartos: "rgba(40,60,50,.18)", junta: "rgba(40,40,30,.16)", losaIzq: "#6f6b60", losaDer: "#58554c" }
-      : { fondo: "#d8e4dc", piso: "#efe9dd", pisoCuartos: "rgba(120,150,135,.14)", junta: "rgba(120,110,90,.18)", losaIzq: "#c8c0ad", losaDer: "#b3ab98" };
+      ? { fondo: "#0b1611", piso: "#a8a395", pisoCuartos: "rgba(40,60,50,.18)", junta: "rgba(40,40,30,.16)" }
+      : { fondo: "#d8e4dc", piso: "#efe9dd", pisoCuartos: "rgba(120,150,135,.14)", junta: "rgba(120,110,90,.18)" };
   }
   paleta();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paleta, sig);
@@ -1500,8 +2351,16 @@ function montar(raiz, opciones = {}) {
 
   /* ---------- 5.8 Colisión y rutas ---------- */
   const RJ = 0.26;
+  // Límites de caminar según la zona: lobby/patio/coliseo, primer piso o sótano
+  function limitesEn(y) {
+    if (y >= SOTANO2.y0 - 1) return [SOTANO2.x0, SOTANO2.y0, SOTANO2.x1, SOTANO2.y1];
+    if (y >= SOTANO.y0 - 1) return [SOTANO.x0, SOTANO.y0, SOTANO.x1, SOTANO.y1];
+    if (y >= FY - 1) return [0, FY, PW, FY + PH];
+    return [0, 0, W, mundo.alturaBase || H];
+  }
   function colisiona(x, y, r = RJ) {
-    if (x - r < 0.2 || y - r < 0.2 || x + r > W - 0.2 || y + r > H - 0.2) return true;
+    const [lx0, ly0, lx1, ly1] = limitesEn(y);
+    if (x - r < lx0 + 0.2 || y - r < ly0 + 0.2 || x + r > lx1 - 0.2 || y + r > ly1 - 0.2) return true;
     for (const s of solidos) if (x + r > s[0] && x - r < s[2] && y + r > s[1] && y - r < s[3]) return true;
     return false;
   }
@@ -1563,11 +2422,10 @@ function montar(raiz, opciones = {}) {
   addEventListener("keydown", ev => {
     if (hayDialogo() || enCampo(ev.target) || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const k = ev.key.toLowerCase();
-    if (MOV.has(k)) { teclas.add(k); if (!ev.target.closest || !ev.target.closest(".ee-panel")) ev.preventDefault(); return; }
+    if (MOV.has(k)) { teclas.add(k); if (!ev.repeat) registrarToque(k); if (!ev.target.closest || !ev.target.closest(".ee-panel")) ev.preventDefault(); return; }
     if (k === "shift") { teclas.add("shift"); return; }
     if ((k === "e" || (k === "enter" && ev.target === lienzo)) && cercano) { if (cercanoEsNPC) cercano.alHablar(); else abrirPanel(cercano.id); ev.preventDefault(); }
     else if (k === "escape" && panelId) cerrarPanel();
-    else if (k === "v") alternarVista();
     else if (k === "+" || k === "=") cambiarZoom(1.15);
     else if (k === "-" || k === "_") cambiarZoom(1 / 1.15);
     else if (k === "f") { teclas.add("f"); disparar(); ev.preventDefault(); }
@@ -1580,13 +2438,21 @@ function montar(raiz, opciones = {}) {
   function aMundo(px, py) {                          // píxel de pantalla -> mundo (en el suelo)
     const r = lienzo.getBoundingClientRect();
     const sx = (px - r.left - r.width / 2) / zoom + cam.px, sy = (py - r.top - r.height / 2) / zoom + cam.py;
-    if (modo === "iso") { const u = sx / (TW / 2), v = sy / (TH / 2); return [(u + v) / 2, (v - u) / 2]; }
     return [sx / S2, sy / S2];
   }
   const etiquetasPantalla = [];
   let arrastre = null;
-  lienzo.addEventListener("pointerdown", ev => { arrastre = { x: ev.clientX, y: ev.clientY, t: performance.now() }; lienzo.focus({ preventScroll: true }); }, sig);
+  lienzo.addEventListener("pointerdown", ev => {
+    arrastre = { x: ev.clientX, y: ev.clientY, t: performance.now() }; lienzo.focus({ preventScroll: true });
+    if (ev.button === 0 && tienePistola && !hayDialogo() && !panelId) {
+      mouseCliente.x = ev.clientX; mouseCliente.y = ev.clientY;
+      ratonFuego = "f"; ratonT0 = performance.now(); disparar();
+    }
+  }, sig);
+  const soltarRaton = () => { ratonFuego = null; };
+  lienzo.addEventListener("pointercancel", soltarRaton, sig);
   lienzo.addEventListener("pointerup", ev => {
+    soltarRaton();
     if (!arrastre || Math.hypot(ev.clientX - arrastre.x, ev.clientY - arrastre.y) > 8) { arrastre = null; return; }
     arrastre = null;
     const r = lienzo.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
@@ -1595,8 +2461,10 @@ function montar(raiz, opciones = {}) {
     const [wx, wy] = aMundo(ev.clientX, ev.clientY);
     if (wx >= NPC.hit[0] && wx <= NPC.hit[2] && wy >= NPC.hit[1] && wy <= NPC.hit[3]) { abrirNPC(); return; }
     if (wx >= NPC_JP.hit[0] && wx <= NPC_JP.hit[2] && wy >= NPC_JP.hit[1] && wy <= NPC_JP.hit[3]) { abrirJP(); return; }
+    if (wx >= ESTATUA.hit[0] && wx <= ESTATUA.hit[2] && wy >= ESTATUA.hit[1] && wy <= ESTATUA.hit[3]) { ESTATUA.alHablar(); return; }
     const e = espacios.find(s => wx >= s.hit[0] && wx <= s.hit[2] && wy >= s.hit[1] && wy <= s.hit[3]);
     if (e) { abrirPanel(e.id); return; }
+    if (tienePistola) return;                  // con arma, el clic es para disparar, no para caminar
     if (wx > 0 && wy > 0 && wx < W && wy < H) irAPunto(wx, wy);
   }, sig);
   lienzo.addEventListener("wheel", ev => { ev.preventDefault(); cambiarZoom(ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false, signal: ac.signal });
@@ -1622,7 +2490,6 @@ function montar(raiz, opciones = {}) {
   /* ---------- 5.10 Actualización ---------- */
   let cercano = null, cercanoEsNPC = false;
   function pantallaAMundoDir(sx, sy) {
-    if (modo === "iso") { const u = sx / (TW / 2), v = sy / (TH / 2); return [(u + v) / 2, (v - u) / 2]; }
     return [sx, sy];
   }
   function actualizar(dt) {
@@ -1640,13 +2507,15 @@ function montar(raiz, opciones = {}) {
       const [tx, ty] = ruta[0], d = Math.hypot(tx - jug.x, ty - jug.y);
       if (d < 0.14) ruta.shift(); else { dx = (tx - jug.x) / d; dy = (ty - jug.y) / d; }
     }
+    const enDash = performance.now() < jug.dashHasta;
+    if (enDash) { dx = jug.dashDx; dy = jug.dashDy; ruta = []; }
     const l = Math.hypot(dx, dy);
     jug.mov = false;
     if (l > 0) {
       dx /= l; dy /= l;
       jug.mx = dx; jug.my = dy;                   // dirección en coordenadas del mundo: la usa la pistola al disparar
       const corriendo = teclas.has("shift");
-      const vel = (corriendo ? 6.8 : 4.2) * dt, ax = jug.x, ay = jug.y;
+      const vel = (enDash ? DASH_VEL : (corriendo ? 6.8 : 4.2)) * dt, ax = jug.x, ay = jug.y;
       let nx = jug.x + dx * vel; const topeX = colisiona(nx, jug.y); if (!topeX) jug.x = nx;
       let ny = jug.y + dy * vel; const topeY = colisiona(jug.x, ny); if (!topeY) jug.y = ny;
       // Chocar contra un mueble o pared mientras corres te quita un poco de energía (breve invulnerabilidad en golpear())
@@ -1672,11 +2541,13 @@ function montar(raiz, opciones = {}) {
       const spx = spx1 - spx0, spy = spy1 - spy0;
       jug.dir = Math.abs(spx) > Math.abs(spy) * 1.2 ? (spx < 0 ? "left" : "right") : (spy < 0 ? "up" : "down");
     }
-    if (teclas.has("f") && armaActual && !hayDialogo() && !panelId) disparar();
+    if (ratonFuego === "f" && performance.now() - ratonT0 > UMBRAL_CLIC_G) ratonFuego = "g";
+    if ((teclas.has("f") || ratonFuego === "f") && armaActual && !hayDialogo() && !panelId) disparar();
     actualizarRayoCargado(dt);
     actualizarRayoUltra(dt);
     actualizarBalas(dt);
     actualizarEnemigos(dt);
+    actualizarColiseo(dt);
     // Cámara
     const [px, py] = P(jug.x, jug.y, 0.6);
     if (cam.px === undefined) { cam.px = px; cam.py = py; }
@@ -1696,9 +2567,17 @@ function montar(raiz, opciones = {}) {
     if (jug.x >= NPC_JP.zona[0] && jug.x <= NPC_JP.zona[2] && jug.y >= NPC_JP.zona[1] && jug.y <= NPC_JP.zona[3]) {
       const d = Math.hypot(jug.x - NPC_JP.ancla[0], jug.y - NPC_JP.ancla[1]); if (d < md) { md = d; mejor = NPC_JP; esNPC = true; }
     }
+    for (const it of INTERACTIVOS_ESCALERA) {
+      if (jug.x >= it.zona[0] && jug.x <= it.zona[2] && jug.y >= it.zona[1] && jug.y <= it.zona[3]) {
+        const d = Math.hypot(jug.x - it.ancla[0], jug.y - it.ancla[1]); if (d < md) { md = d; mejor = it; esNPC = true; }
+      }
+    }
+    if (jug.x >= ESTATUA.zona[0] && jug.x <= ESTATUA.zona[2] && jug.y >= ESTATUA.zona[1] && jug.y <= ESTATUA.zona[3]) {
+      const d = Math.hypot(jug.x - ESTATUA.ancla[0], jug.y - ESTATUA.ancla[1]); if (d < md) { md = d; mejor = ESTATUA; esNPC = true; }
+    }
     if (mejor !== cercano) {
       cercano = mejor; cercanoEsNPC = esNPC;
-      if (cercano && esNPC) { el.pista.hidden = false; el.pista.innerHTML = `<kbd>E</kbd> Hablar con ${esc(cercano.nombre)}`; el.pista.onclick = () => cercano.alHablar(); }
+      if (cercano && esNPC) { el.pista.hidden = false; el.pista.innerHTML = `<kbd>E</kbd> ${esc(cercano.etiquetaAccion || "Hablar con")} ${esc(cercano.nombre)}`; el.pista.onclick = () => cercano.alHablar(); }
       else if (cercano) { el.pista.hidden = false; el.pista.innerHTML = `<kbd>E</kbd> Ver ${esc(cercano.nombre)}`; el.pista.onclick = () => abrirPanel(cercano.id); }
       else el.pista.hidden = true;
     }
@@ -1747,7 +2626,7 @@ function montar(raiz, opciones = {}) {
           const [sx, sy, lado] = seats[i], ap = avatarAleatorio(hash(st.reserva.id + ":" + i));
           const dir = lado === "N" ? "down" : lado === "S" ? "up" : lado === "E" ? "left" : "right";
           const kx = e.tipo === "cuarto" ? sx : sx, ky = sy;
-          dyn.push({ k: kx + ky + 0.02, h: 99, fn: () => { const [px, py] = P(kx, ky, modo === "iso" ? 0.3 : 0); dibujarAvatar(c, ap, { x: px, y: py + (modo === "iso" ? 0 : 6), dir, sentado: true, esc: 0.92 }); } });
+          dyn.push({ k: kx + ky + 0.02, h: 99, fn: () => { const [px, py] = P(kx, ky); dibujarAvatar(c, ap, { x: px, y: py + 6, dir, sentado: true, esc: 0.92 }); } });
         }
       }
     });
@@ -1760,6 +2639,7 @@ function montar(raiz, opciones = {}) {
     } });
     // Enemigos de práctica (maniquíes que deambulan; barra de vida propia encima de cada uno)
     enemigos.forEach(en => dyn.push({ k: en.x + en.y + 0.015, h: 98, fn: () => {
+      if (en.esColiseo) { dibujarGranHocico(en); return; }
       if (en.esJefe) {
         dibujarJefe(en);
         const [bpx, bpy] = P(en.x, en.y, 1.15 + Math.sin((en.bob || 0) * 2.2) * 0.18);
@@ -1777,7 +2657,7 @@ function montar(raiz, opciones = {}) {
     // Rayo del visor de energía: línea roja breve con halo, se desvanece casi al instante
     rayos.forEach(r => { const edad = (performance.now() - r.t) / 140, alfa = Math.max(0, 1 - edad);
       dyn.push({ k: (r.x0 + r.x1) / 2 + (r.y0 + r.y1) / 2 + 0.5, h: 99, fn: () => {
-        const [ax, ay] = P(r.x0, r.y0, 0.95), [bx, by] = P(r.x1, r.y1, 0.95);
+        const [ax, ay] = enCabeza(r.x0, r.y0), [bx, by] = P(r.x1, r.y1);
         c.globalAlpha = alfa;
         c.lineWidth = 6; c.strokeStyle = "rgba(255,40,40,.35)"; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
         c.lineWidth = 2; c.strokeStyle = "#ff2b2b"; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
@@ -1787,7 +2667,7 @@ function montar(raiz, opciones = {}) {
     // Rayo cargado del visor (tecla G): más grueso y brillante, dura mientras se mantiene la tecla
     if (rayoActivo) { const r = rayoActivo;
       dyn.push({ k: (r.x0 + r.x1) / 2 + (r.y0 + r.y1) / 2 + 0.55, h: 99, fn: () => {
-        const [ax, ay] = P(r.x0, r.y0, 0.95), [bx, by] = P(r.x1, r.y1, 0.95);
+        const [ax, ay] = enCabeza(r.x0, r.y0), [bx, by] = P(r.x1, r.y1);
         const pulso = 0.85 + Math.sin(performance.now() / 40) * 0.15;
         c.lineWidth = 17 * pulso; c.strokeStyle = "rgba(255,30,30,.28)"; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
         c.lineWidth = 8 * pulso; c.strokeStyle = "rgba(255,70,50,.55)"; c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
@@ -1797,7 +2677,7 @@ function montar(raiz, opciones = {}) {
     // Rayo definitivo del visor (tecla P): el más grueso y con más efectos, atraviesa todo, dura lo que dura el audio
     if (rayoUltra) { const r = rayoUltra;
       dyn.push({ k: (r.x0 + r.x1) / 2 + (r.y0 + r.y1) / 2 + 0.6, h: 99, fn: () => {
-        const [ax, ay] = P(r.x0, r.y0, 0.95), [bx, by] = P(r.x1, r.y1, 0.95);
+        const [ax, ay] = enCabeza(r.x0, r.y0), [bx, by] = P(r.x1, r.y1);
         const ahora2 = performance.now();
         const pulso = 0.8 + Math.sin(ahora2 / 25) * 0.2;
         const largo = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / largo, uy = (by - ay) / largo;
@@ -1849,8 +2729,10 @@ function montar(raiz, opciones = {}) {
       } });
     });
 
+    pushColiseoDyn(dyn);
+    pushPiso1Dyn(dyn);
     const lista = estaticos.concat(dyn);
-    if (modo === "iso") lista.sort((a, b) => a.k - b.k || a.h - b.h); else lista.sort((a, b) => a.h - b.h || a.k - b.k);
+    lista.sort((a, b) => a.h - b.h || a.k - b.k);
     lista.forEach(it => it.fn());
     c.restore();
 
@@ -1864,9 +2746,12 @@ function montar(raiz, opciones = {}) {
       c.fillStyle = grad; c.fillRect(0, 0, ancho, alto);
     }
 
+    // Fundido a negro al cruzar el portal del coliseo
+    if (transicion) { const p = acotar((performance.now() - transicion.t0) / transicion.dur, 0, 1); c.fillStyle = `rgba(0,0,0,${1 - Math.abs(2 * p - 1)})`; c.fillRect(0, 0, ancho, alto); }
+
     // Etiquetas (en pantalla, sin escalar)
     etiquetasPantalla.length = 0;
-    const toPant = (x, y, z) => { const [px, py] = P(x, y, z); return [ancho / 2 + (px - cam.px) * zoom, alto / 2 + (py - cam.py) * zoom - (modo === "2d" ? 8 : 0)]; };
+    const toPant = (x, y) => { const [px, py] = P(x, y); return [ancho / 2 + (px - cam.px) * zoom, alto / 2 + (py - cam.py) * zoom - 8]; };
     espacios.forEach(e => {
       const st = estados[e.id]; if (!st) return;
       const [sx, sy] = toPant(e.etiqueta[0], e.etiqueta[1], e.etiqueta[2]);
@@ -1882,6 +2767,8 @@ function montar(raiz, opciones = {}) {
       c.globalAlpha = 1;
       etiquetasPantalla.push({ id: e.id, ...r });
     });
+    // Rótulo del portal al coliseo
+    { const [sx, sy] = toPant(SEP.gapX + SEP.gapAncho / 2, SEP.y - 0.9, 0.2); pill(c, sx, sy, "Coliseo", null, { bg: "rgba(70,30,90,.7)", fs: 11 }); }
     // Rótulo de entrada
     { const [sx, sy] = toPant(mundo.inicio.x, (mundo.limiteLobby || H) - 0.6, 0.2); pill(c, sx, sy, "Entrada", null, { bg: "rgba(40,70,55,.6)", fs: 11 }); }
   }
@@ -2012,8 +2899,7 @@ function montar(raiz, opciones = {}) {
   raiz.addEventListener("click", ev => {
     const b = ev.target.closest("[data-a]"); if (!b) return;
     const a = b.dataset.a;
-    if (a === "vista") alternarVista();
-    else if (a === "mas") cambiarZoom(1.2); else if (a === "menos") cambiarZoom(1 / 1.2);
+    if (a === "mas") cambiarZoom(1.2); else if (a === "menos") cambiarZoom(1 / 1.2);
     else if (a === "avatar") abrirAvatar(); else if (a === "lista") abrirLista(); else if (a === "ayuda") abrirAyuda();
     else if (a === "cerrarPanel") cerrarPanel();
     else if (a === "reservar") { formAbierto = true; renderAccion(); }
@@ -2036,17 +2922,6 @@ function montar(raiz, opciones = {}) {
     }
   }, sig);
 
-  /* ---------- 5.14 Vista 2D / 3D ---------- */
-  function alternarVista() {
-    modo = modo === "iso" ? "2d" : "iso"; escribir(cfg.claveVista, modo);
-    zoom = zoomBase(); cam.px = undefined; actualizarBotonVista();
-    anunciar(modo === "iso" ? "Vista 3D isométrica" : "Vista 2D en planta");
-  }
-  function actualizarBotonVista() {
-    const b = raiz.querySelector('[data-a="vista"]'); b.textContent = modo === "iso" ? "Vista: 3D" : "Vista: 2D"; b.setAttribute("aria-pressed", modo === "2d" ? "true" : "false");
-    b.setAttribute("aria-label", modo === "iso" ? "Vista 3D. Cambiar a vista 2D en planta" : "Vista 2D. Cambiar a vista 3D");
-  }
-  actualizarBotonVista();
 
   /* ---------- 5.15 Diálogos ---------- */
   const cerrarDlg = d => { if (d && d.open) d.close(); };
@@ -2082,6 +2957,14 @@ function montar(raiz, opciones = {}) {
     abrirNPC();   // refresca el menú para mostrar cuál quedó equipada, sin cerrar el diálogo
   }, sig);
   if (el.btnDisparar) el.btnDisparar.addEventListener("click", () => disparar(), sig);
+  if (el.volMusica && el.volSfx) {
+    el.volMusica.value = volumen.musica; el.volSfx.value = volumen.sfx;
+    el.volMusica.addEventListener("input", () => { volumen.musica = +el.volMusica.value; aplicarVolumen(); }, sig);
+    el.volSfx.addEventListener("input", () => { volumen.sfx = +el.volSfx.value; aplicarVolumen(); }, sig);
+    const guardar = () => escribir("espacio.volumen.v1", volumen);
+    el.volMusica.addEventListener("change", guardar, sig);
+    el.volSfx.addEventListener("change", guardar, sig);
+  }
 
   // ---- Ayuda
   function abrirAyuda(sinAbrir) {
@@ -2090,7 +2973,7 @@ function montar(raiz, opciones = {}) {
       <ul class="ee-ayuda"><li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> o las flechas mueven a tu personaje (<kbd>Shift</kbd> para correr).</li>
       <li>Toca o haz clic en el piso para caminar hasta ahí; en el celular usa el joystick.</li>
       <li><kbd>E</kbd> abre el espacio más cercano. También puedes tocar su nombre o el mueble.</li>
-      <li><kbd>V</kbd> cambia entre vista 3D y 2D · <kbd>+</kbd> <kbd>−</kbd> o la rueda hacen zoom · <kbd>Esc</kbd> cierra el detalle.</li>
+      <li><kbd>+</kbd> <kbd>−</kbd> o la rueda hacen zoom · <kbd>Esc</kbd> cierra el detalle.</li>
       <li>La <b>entrada</b>, al sur del lobby, ahora es una puerta de verdad: crúzala para llegar al <b>patio</b>, una zona nueva con sus propias mesas y una banca. Ahí, frente al letrero, está <b>JP</b>: habla con él para usar su invocador y hacer aparecer al Centinela, un ojo flotante gigante con muchísima vida que te persigue y te quita energía si te alcanza; se puede derrotar a tiros igual que los maniquíes, y JP te deja invocarlo de nuevo cuantas veces quieras.</li></ul>
       <h3 class="ee-sub">Armas de práctica</h3>
       <p class="ee-nota">Busca al ${esc(NPC.nombre)} cerca de las mesas (aparece marcado en el plano) y elige un arma de su menú: pistola, subfusil, escopeta, rifle o el visor de energía (se ve puesto en tu personaje y dispara un rayo rojo), cada una con su propio daño, cadencia y alcance. Apunta con el <b>mouse</b> (tu personaje gira hacia el cursor) y dispara con <kbd>F</kbd> (o el botón 🔫 en pantalla táctil); mantenla presionada para disparar sin soltar. Con el visor equipado, <kbd>G</kbd> dispara un rayo cargado más grueso y poderoso que no deja de salir mientras la mantengas presionada, y <kbd>P</kbd> suelta el rayo definitivo: el más grueso y de mayor alcance de todos, atraviesa muebles y deja marcas de quemado en el piso que se van borrando solas con el tiempo; tiene su propio audio y dura justo lo que dura ese audio. Cada disparo tiene su propio sonido. También empezarán a aparecer maniquíes de entrenamiento que deambulan por la sala: cada uno aguanta un par de disparos antes de caer, y el contador de arriba lleva la cuenta de blancos y maniquíes derrotados.</p>
@@ -2199,9 +3082,8 @@ function montar(raiz, opciones = {}) {
     tienePistola: () => tienePistola, arma: () => (armaActual ? { id: armaId, ...armaActual } : null), blancosImpactados: () => blancosImpactados, disparar: () => disparar(),
     enemigos: () => enemigos.map(en => ({ id: en.id, x: en.x, y: en.y, hp: en.hp })), enemigosDerrotados: () => enemigosDerrotados,
     teletransportar: (x, y) => { jug.x = x; jug.y = y; ruta = []; cam.px = undefined; },
-    vista: v => { if (v && v !== modo) alternarVista(); return modo; },
     avatar: () => ({ ...avatar }),
-    destruir() { cancelAnimationFrame(raf); ac.abort(); ro.disconnect(); raiz.innerHTML = ""; raiz.classList.remove("ee"); },
+    destruir() { cancelAnimationFrame(raf); ac.abort(); ro.disconnect(); for (const z in ambiente) if (ambiente[z].audio) ambiente[z].audio.pause(); raiz.innerHTML = ""; raiz.classList.remove("ee"); },
   };
 }
 
@@ -2242,6 +3124,8 @@ function inyectarEstilos() {
   @media (max-width:720px){ .ee-vida { padding:8px 12px; } .ee-vida-barra { width:96px; } }
   @media (prefers-reduced-motion: reduce){ .ee-vida--baja { animation:none; } }
   .ee-controles { position:absolute; left:12px; bottom:max(12px,env(safe-area-inset-bottom)); display:flex; flex-wrap:wrap; gap:8px; max-width:calc(100% - 24px); }
+  .ee-vol { display:flex; align-items:center; gap:8px; min-height:44px; padding:8px 12px; border-radius:12px; font-weight:600; font-size:13px; color:var(--ee-on); background:var(--ee-deep); box-shadow:0 4px 14px rgba(0,0,0,.18); }
+  .ee-vol input { width:96px; accent-color:var(--ee-acc); }
   .ee-btn { -webkit-appearance:none; appearance:none; cursor:pointer; min-height:44px; padding:10px 16px; border-radius:12px; font-weight:600; font-size:14px; color:var(--ee-on); background:var(--ee-deep); border:1.5px solid var(--ee-deep); touch-action:manipulation; box-shadow:0 4px 14px rgba(0,0,0,.18); }
   .ee-btn:hover { background:var(--ee-acc); color:#04150d; border-color:var(--ee-acc); }
   .ee-btn:disabled { cursor:not-allowed; opacity:.55; background:var(--ee-bg); color:var(--ee-txt2); border-color:var(--ee-bd); box-shadow:none; }
