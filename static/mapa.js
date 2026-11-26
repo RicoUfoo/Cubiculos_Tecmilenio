@@ -543,11 +543,7 @@ function montar(raiz, opciones = {}) {
   let mouseCliente = { x: innerWidth / 2, y: innerHeight / 2 }, mouseActivo = false;
   let ratonFuego = null, ratonT0 = 0;          // clic izquierdo: "f" al pulsar (tap), "g" si se mantiene
   const UMBRAL_CLIC_G = 260;                   // ms antes de pasar de disparo F a rayo G
-  const blancos = [
-    { id: "blanco-1", x: 29, y: 6, coolHasta: 0 },
-    { id: "blanco-2", x: 22, y: 19, coolHasta: 0 },
-    { id: "blanco-3", x: 4, y: 19, coolHasta: 0 },
-  ];
+  const blancos = [];   // blancos de práctica quitados (ya no hay círculos en la planta baja)
   /* ----- Enemigos de práctica: aparecen al azar una vez que tienes la pistola, deambulan y se pueden derrotar a tiros ----- */
   const ENEMIGO_HP = 20, ENEMIGO_MAX = 4, ENEMIGO_DIST_SPAWN = 3.2;
   let enemigos = [], enemigosDerrotados = 0, proxEnemigo = Infinity, ultimoIdEnemigo = 0;
@@ -705,7 +701,7 @@ function montar(raiz, opciones = {}) {
     dialogo: [
       "¡Bienvenido al gimnasio!",
       "Las máquinas están libres, úsalas con calma y limpia lo que uses.",
-      "Si necesitas algo, aquí me encuentras.",
+      "Si necesitas algo, aquí me encuentras. me gustan las menorsitas jajaja",
     ],
     apariencia: { nombre: "Coach", piel: PIEL[1], pelo: PELO[1], peinado: "corto", ropa: "#c2410c", pantalon: "#1f2937", accesorio: "gorra", mochila: false },
   };
@@ -715,7 +711,7 @@ function montar(raiz, opciones = {}) {
   NPC_GYM.alHablar = () => abrirGym();
 
   function actualizarEquipo() {
-    if (el.armaCaja) el.armaCaja.hidden = !tienePistola;
+    if (el.armaCaja) el.armaCaja.hidden = !tienePistola || !!(armaActual && armaActual.esRayo);   // el visor no muestra este letrero
     if (el.btnDisparar) el.btnDisparar.hidden = !tienePistola || !matchMedia("(pointer: coarse)").matches;
     const recarga = performance.now() < rayoPListoEn ? ` · Rayo P en recarga ${Math.ceil((rayoPListoEn - performance.now()) / 1000)} s` : "";
     if (el.armaMarcador) el.armaMarcador.textContent = `${armaActual ? armaActual.nombre + " · " : ""}${blancosImpactados} blancos · ${enemigosDerrotados} enemigos${recarga}`;
@@ -2309,6 +2305,17 @@ function montar(raiz, opciones = {}) {
     NPCS_EXTRA.push(n);
     return n;
   }
+  // NPC de los baños: cambia los textos de `paginas` para cambiar su diálogo (cada texto es una página)
+  const NPC_BANOS = npcHablante({
+    id: "npc-banos", nombre: "Gabo",
+    x: 14.5 * K, y: FY + 35.3 * K,
+    apariencia: { nombre: "Gabo", ropa: "#2f6fb0", pantalon: "#263238", accesorio: "gorra" },
+    paginas: [
+      "¿Qué onda, we?",
+      "Corrí 10 kilómetros y soy amigo de una gordota acá bien acá.",
+      "Me gustaría ir a China.",
+    ],
+  });
   const npcsDelMundo = () => NPCS_TIENDA.concat(NPCS_EXTRA);
 
   /* =============================== SISTEMA DE MISIONES ===============================
@@ -2682,7 +2689,7 @@ function montar(raiz, opciones = {}) {
 
     // Muros: perímetro, mureta del estacionamiento, fachada con salidas y puerta, columnas y salones
     muros([
-      [0, 0, 32, 0], [0, 34, 32, 34], [0, 0, 0, 34], [32, 0, 32, 34],
+      [0, 0, 32, 0], [0, 34, 12.6, 34], [14.3, 34, 21.8, 34], [23.5, 34, 32, 34], [0, 0, 0, 34], [32, 0, 32, 34],
       [0, 6, 32, 6],
       [0, 12, 10.7, 12], [13.4, 12, 17.7, 12], [19.9, 12, 23.8, 12], [26.6, 12, 32, 12],
       [4.9, 12, 4.9, 14.2], [4.9, 15.2, 4.9, 30], [4.9, 31, 4.9, 34],
@@ -2786,6 +2793,7 @@ function montar(raiz, opciones = {}) {
         marcaMision(n.id, px, py);
       });
     });
+    construirBanos();
     construirGimnasio();
     construirSalaEstudio();
     construirSotano2();
@@ -2807,6 +2815,49 @@ function montar(raiz, opciones = {}) {
       }
     }
   }
+  /* ----- Baños: dos bloques al sur del primer piso, cada uno con su puerta, lavabos y cubículos ----- */
+  function construirBanos() {
+    const Y0 = 34, Y1 = 42, YC = 40.5;                 // techo, piso y arranque de los cubículos (coords del plano)
+    const IZQ = [0, 15.1], DER = [19.7, 32];           // bloque izquierdo y bloque derecho
+    const etiquetas = [];
+    const bloque = (x0, y0, x1, y1, h, col) => {
+      const r = RECT(x0, y0, x1, y1);
+      solidos.push(r);
+      agregar((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, h, () => caja(r[0], r[1], r[2] - r[0], r[3] - r[1], 0, h, col));
+    };
+    // Piso de azulejo de los dos bloques
+    decals.push(() => [IZQ, DER].forEach(([a, b]) => {
+      const r = RECT(a, Y0, b, Y1);
+      rectPiso(r[0], r[1], r[2] - r[0], r[3] - r[1], "#ccd4d7", PAL.junta, 1);
+    }));
+    // Perímetro de la zona y muros que separan los dos bloques del pasillo de en medio
+    muros([[0, Y1, 32, Y1], [0, Y0, 0, Y1], [32, Y0, 32, Y1], [IZQ[1], Y0, IZQ[1], Y1], [DER[0], Y0, DER[0], Y1]]);
+    // Cubículos: divisorias, frente con hueco de puerta y taza dentro
+    const cubiculos = (x0, x1, n) => {
+      const w = (x1 - x0) / n;
+      for (let i = 0; i < n; i++) {
+        const a = x0 + i * w, b = a + w, cx = (a + b) / 2;
+        if (i > 0) muros([[a, YC, a, Y1]]);
+        muros([[a, YC, cx - 0.55, YC], [cx + 0.55, YC, b, YC]]);
+        bloque(cx - 0.32, Y1 - 0.75, cx + 0.32, Y1 - 0.2, 0.85, "#eef3f5");
+        etiquetas.push([cx, YC + 0.55, "Baño"]);
+      }
+    };
+    cubiculos(IZQ[0], IZQ[1], 6);
+    cubiculos(DER[0], DER[1], 5);
+    // Lavabos (barra delgada) y mueble largo detrás, en cada bloque
+    [[0.4, 12.0], [22.4, 31.6]].forEach(([a, b]) => {
+      bloque(a, 35.8, b, 36.4, 1.0, "#cfd6d9");
+      bloque(a, 36.9, b, 38.4, 1.35, "#aab3b7");
+      etiquetas.push([(a + b) / 2, 35.4, "Lavabos"]);
+    });
+    decals.push(() => {
+      c.save(); c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#2a2f2c";
+      etiquetas.forEach(([x, y, t]) => { const [wx, wy] = PL(x, y); const [px, py] = P(wx, wy, 0); c.fillText(t, px, py); });
+      c.restore();
+    });
+  }
+
   // Segundo y tercer piso (igual al dibujo): 4 salones por lado, pared grande al centro, pasillo alrededor.
   // conSubida: escalera de arriba hacia el siguiente piso (el tercer piso no la tiene).
   function construirPisoAlto(pz, num, conSubida) {
@@ -3280,6 +3331,7 @@ function montar(raiz, opciones = {}) {
     if (y >= PISO2.y0 - 1) return "Segundo piso";
     if (y >= SOTANO2.y0 - 1) return "Mensajería Hora Vive";
     if (y >= SOTANO.y0 - 1) return "Sala de estudio";
+    if (y >= FY + 34 * K) return "Baños";
     if (y >= FY - 1) return "Primer piso";
     if (y >= SEP.y) return "Coliseo";
     if (y >= mundo.limiteLobby) return "Patio";
