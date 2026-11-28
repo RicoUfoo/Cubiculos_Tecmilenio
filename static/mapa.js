@@ -51,6 +51,7 @@ const BASE = {
   musicaMensajeria: "Musica/snowy-world.mp3",   // Mensajería Hora Vive
   musicaRexi: "Musica/stains-of-time.mp3",      // pelea contra Rexi en la sala de estudio
   musicaMario: "Musica/meme-messiah.mp3",       // pelea contra Mario (Stream Meme Messiah)
+  musicaHoraVive: "Musica/exo-mechs.mp3",       // pelea contra los líderes de Hora Vive (misión «El Mata Bebés»; cámbiala por la que quieras)
   urlPlano: "plano-espiritual.html",            // misión final: el plano espiritual de David Pro (otro archivo, junto a la página del juego)
   // Videos de la tele gigante de la explanada (primer piso): se repiten en bucle y cambian cada que regresas al piso
   videosTele: ["Videos/tele-1.mp4", "Videos/tele-2.mp4", "Videos/tele-3.mp4", "Videos/tele-4.mp4", "Videos/tele-5.mp4", "Videos/tele-6.mp4", "Videos/tele-7.mp4"],
@@ -1051,6 +1052,7 @@ function montar(raiz, opciones = {}) {
     avisar(`Compraste: ${prod.nombre}. Te quedan $${saldo}.`);
     anunciar(`Compraste ${prod.nombre}. Saldo: ${saldo} pesos.`);
     Misiones.evento("comprar", id);
+    if (tiendaId === "npc-creamio") contarCompraCreamio();
     abrirTienda(npc, id, true);
   }
 
@@ -2490,6 +2492,7 @@ function montar(raiz, opciones = {}) {
     }
     if (en.esColiseo) return;
     if (en.esMario) { if (!en.derrotado) { en.derrotado = ahora; en.hp = 0; limpiarMario(); avisar("¡Mario cae de rodillas!"); } return; }
+    if (en.esLiderHV) { if (!en.caido) { en.caido = ahora; en.hp = 0; en.radio = 0.001; en.estado = "caido"; avisar(`¡${en.nombreJefe.split(" ·")[0]} cae!`); temblorEvento = Math.max(temblorEvento, 10); } return; }
     impactos.push({ x: en.x, y: en.y, t: ahora, col: "#ffffff" });
     enemigos.splice(enemigos.indexOf(en), 1);
     if (en.esJefe) {
@@ -2572,6 +2575,7 @@ function montar(raiz, opciones = {}) {
       if (en.esRexi) { actualizarRexi(en, dt); return; }
       if (en.esGuardian) { actualizarGuardian(en, dt); return; }
       if (en.esMario) { actualizarMario(en, dt); return; }
+      if (en.esLiderHV) { actualizarLiderHV(en, dt); return; }
       if (en.esJefe) { actualizarCentinela(en, dt); return; }
       if (en.esJefeViejo) {
         // (IA anterior del Centinela, ya no se usa)
@@ -2726,6 +2730,10 @@ function montar(raiz, opciones = {}) {
     "cupon-vencido": { nombre: "Cupón 2x1 del Coliseo (caducado)", desc: "«Válido hasta ayer. No se aceptan reclamaciones. El buffet nunca existió.»" },
     "craneo-bangladesh": { nombre: "Cráneo de un wey bangladesh", desc: "Objeto legendario. Rareza: extremadamente cuestionable. Un cráneo de procedencia desconocida. El Viltrumita asegura que perteneció a un guerrero de una civilización antigua. Nadie ha confirmado esta historia." },
     "reliquia-suprema": { nombre: "La Reliquia Suprema del Dios Benevolente", desc: "Las reliquias del Güero, comprimidas en una sola. Dicen que despierta el poder del visor de energía." },
+    "frasco-mb": { nombre: "Frasco del «Lote M.B.» 🫙", desc: "Formol y algo chiquito flotando adentro. La prueba de lo que Hora Vive mandaba en sus paquetes." },
+    "expediente-hv": { nombre: "Expediente de Hora Vive", desc: "Lo último que quedó de Hora Vive. Cuentas, firmas de Erick y, en la última hoja, solo un sello morado con forma de aro: «para la casa. —el que llegó primero»." },
+    "botella-brandon": { nombre: "Botella de agua del Güero 💧", desc: "La botella de agua de Brandon. Para el culto, el tercer artilugio. Para Brandon, una botella." },
+    "ficha-david": { nombre: "Ficha de admisión de David P.", desc: "Sin fecha de ingreso. Sin foto: un aro dorado dibujado donde iba la cara. «Ya estaba aquí cuando llegamos.» Sigue tibia." },
     "peine-rexi": { nombre: "Peine de Rexi", desc: "Coleccionable. Rexi ya no lo necesita… casi." },
     "minoxidil": { nombre: "Minoxidil", desc: "Objeto de misión. Un producto que el CAPI lleva demasiado tiempo necesitando." },
     "tijeras-barbero": { nombre: "Tijeras de barbero", desc: "Coleccionable. Recuerdo de tu primer corte en LIONS BARBER SHOP." },
@@ -3136,6 +3144,8 @@ function montar(raiz, opciones = {}) {
       else if (transicion.destino === "salaArriba") { const [ex, ey] = PL(20.7, 16.1); jug.x = ex; jug.y = ey; jug.dir = "down"; avisar("Subiste al primer piso."); }
       else if (transicion.destino === "salaEstudio") { jug.x = LLEGADA_SALA.x; jug.y = LLEGADA_SALA.y; avisar("Bajaste a la sala de estudio."); }
       else if (transicion.destino === "marioArena") { jug.x = MARIO_ARENA.x0 + 17; jug.y = MARIO_ARENA.y1 - 2.5; jug.dir = "up"; arrancarMario(); }
+      else if (transicion.destino === "hvArena") { jug.x = HV_ARENA.x0 + 20; jug.y = HV_ARENA.y1 - 2.6; jug.dir = "up"; if (!estMB.vencidos) setTimeout(escenaEntradaHV, 450); else avisar("Regresaste al Cuarto de admisiones. Tira el suministro."); }
+      else if (transicion.destino === "hvSalir") { jug.x = PUERTA_ADM[0]; jug.y = PUERTA_ADM[1] - 1.4; jug.dir = "up"; avisar(estMB.destruido ? "Saliste del Cuarto de admisiones. Atrás de ti, todo arde." : "Saliste al lobby."); }
       else if (transicion.destino === "marioSalon") { jug.x = MARIO_SILLA[0] + 2.2; jug.y = MARIO_SILLA[1] + 1.4; jug.dir = "left"; avisar("Regresaste al Salón 202. Todavía huele…"); }
       else if (transicion.destino === "lideres") { jug.x = LIDERES.x0 + 15; jug.y = LIDERES.y0 + 2.8; jug.dir = "down"; avisar("Entraste a la sala de los líderes."); }
       else if (transicion.destino === "mensajeriaFondo") { jug.x = PUERTA_HV[0]; jug.y = FYS2 + 18.2; jug.dir = "up"; avisar("Regresaste a Mensajería Hora Vive."); }
@@ -3181,12 +3191,13 @@ function montar(raiz, opciones = {}) {
     plantaBaja: { lista: [].concat(cfg.musicaPlantaBaja).map(u => new URL(u, document.baseURI).href), idx: 0, audio: null, nivel: 0, fallo: false },
     mensajeria: { url: new URL(cfg.musicaMensajeria, document.baseURI).href, audio: null, nivel: 0, fallo: false },
     rexi: { url: new URL(cfg.musicaRexi, document.baseURI).href, audio: null, nivel: 0, fallo: false, reinicia: true, fade: 0.5 },
-    mario: { url: new URL(cfg.musicaMario, document.baseURI).href, audio: null, nivel: 0, fallo: false, reinicia: true, fade: 0.5 }
+    mario: { url: new URL(cfg.musicaMario, document.baseURI).href, audio: null, nivel: 0, fallo: false, reinicia: true, fade: 0.5 },
+    hv: { url: new URL(cfg.musicaHoraVive, document.baseURI).href, audio: null, nivel: 0, fallo: false, reinicia: true, fade: 0.5 }
   };
   function actualizarMusicaAmbiente(dt) {
     const peleaJefe = enPeleaJefe();
     const peleaRexi = enemigos.some(e => e.esRexi);
-    const zonaActual = peleaRexi ? "rexi" : enemigos.some(e => e.esMario) ? "mario" : jug.y >= MARIO_ARENA.y0 - 1 ? null : jug.y >= LIDERES.y0 - 1 ? "mensajeria" : jug.y >= PISO2.y0 - 1 ? "pisosAltos" : jug.y >= SOTANO2.y0 - 1 ? "mensajeria" : jug.y >= SOTANO.y0 - 1 ? "salaEstudio" : jug.y >= FY - 1 ? "primerPiso" : jug.y < SEP.y ? "plantaBaja" : null;
+    const zonaActual = peleaRexi ? "rexi" : enemigos.some(e => e.esMario) ? "mario" : enemigos.some(e => e.esLiderHV) ? "hv" : jug.y >= MARIO_ARENA.y0 - 1 ? null : jug.y >= LIDERES.y0 - 1 ? "mensajeria" : jug.y >= PISO2.y0 - 1 ? "pisosAltos" : jug.y >= SOTANO2.y0 - 1 ? "mensajeria" : jug.y >= SOTANO.y0 - 1 ? "salaEstudio" : jug.y >= FY - 1 ? "primerPiso" : jug.y < SEP.y ? "plantaBaja" : null;
     for (const zona of Object.keys(ambiente)) {
       const a = ambiente[zona];
       const objetivo = zona === zonaActual && !peleaJefe && !pianoActivo && !musicaPesca.sonando ? 1 : 0;
@@ -3527,7 +3538,8 @@ function montar(raiz, opciones = {}) {
   // LIONS BARBER SHOP: al otro lado de la calle (se llega cruzando desde el estacionamiento)
   const BARBERIA = { x0: 0, y0: PISO3.y1 + 20, x1: 24, y1: PISO3.y1 + 31 };
   const LIDERES = { x0: 9, y0: BARBERIA.y1 + 45, x1: 39, y1: BARBERIA.y1 + 59 };
-  const MARIO_ARENA = { x0: 0, y0: LIDERES.y1 + 45, x1: 34, y1: LIDERES.y1 + 69 };   // «El salón apestoso»: la arena del jefe Mario   // Sala de los líderes de Hora Vive: lejos de todo para que no se vea desde ningún piso
+  const MARIO_ARENA = { x0: 0, y0: LIDERES.y1 + 45, x1: 34, y1: LIDERES.y1 + 69 };
+  const HV_ARENA = { x0: 0, y0: MARIO_ARENA.y1 + 45, x1: 40, y1: MARIO_ARENA.y1 + 70 };   // el Cuarto de admisiones por dentro (la base de Hora Vive)   // «El salón apestoso»: la arena del jefe Mario   // Sala de los líderes de Hora Vive: lejos de todo para que no se vea desde ningún piso
   // Tele de la barbería: el video va metido en el archivo y se repite; el sonido solo se oye cerca de la tele
   const TELE_BARBERIA = { x: 21.6, y: BARBERIA.y0 + 5.6 };
   const videoTele = document.createElement("video");
@@ -3632,6 +3644,9 @@ function montar(raiz, opciones = {}) {
       { id: "malteada-chocolate", nombre: "Malteada de chocolate", precio: 45, energia: 40 },
       { id: "malteada-fresa", nombre: "Malteada de fresa", precio: 45, energia: 40 },
       { id: "malteada-galleta", nombre: "Malteada de galleta", precio: 55, energia: 55 },
+      { id: "capuchino", nombre: "Capuchino", precio: 40, energia: 30 },
+      { id: "frappe", nombre: "Frappé", precio: 50, energia: 45 },
+      { id: "cafe-helado", nombre: "Café helado", precio: 40, energia: 35 },
     ],
   };
   [[NPC_OXXO, 16.45, 18.45, [14.5, 19.5, 18.4, 22.3]], [NPC_CREAMIO, 20.85, 18.45, [18.8, 19.5, 22.9, 22.3]]].forEach(([n, x, y, z]) => {
@@ -6471,7 +6486,7 @@ function montar(raiz, opciones = {}) {
   // Lo que necesitas para distraerlo. Cada renglón es un requisito; si trae varios, cualquiera de ellos sirve.
   const OBJETOS_DAVID = [["craneo-bangladesh"], ["ropa-podrida"], ["seguro-carro"], ["trozos-carro"], ["miados-paciente"], ["tarjeta-hv-adentro", "citatorio-direccion"]];
   const faltanDavid = () => OBJETOS_DAVID.filter(op => !op.some(id => inventario.misiones.includes(id)));
-  const etapaDavid = () => { if (!Misiones.estado.activas.archivoDavid) return -1; return Misiones.objetivoListo("archivoDavid", 0) ? (Misiones.objetivoListo("archivoDavid", 1) ? 2 : 1) : 0; };
+  const etapaDavid = () => { if (!Misiones.estado.activas.archivoDavid) return -1; return Misiones.objetivoListo("archivoDavid", 0) ? (Misiones.objetivoListo("archivoDavid", 2) ? 2 : 1) : 0; };
   const davidFuera = () => etapaDavid() === 1;                       // se fue corriendo al baño: la compu queda sola
   { const v = NPC_DAVID.visible; NPC_DAVID.visible = () => (!v || v()) && !davidFuera(); }
   { const normal = NPC_DAVID.alHablar;
@@ -6495,7 +6510,7 @@ function montar(raiz, opciones = {}) {
       rr(c, lx - 13, ly - 4, 26, 9, 2, "#374151"); rr(c, lx - 12, ly - 19, 24, 16, 2, "#111827");
       c.fillStyle = `hsl(${(t * 40) % 360},80%,60%)`; c.fillRect(lx - 10, ly - 17, 20, 12);                          // la pantalla brilla raro
       c.save(); c.globalAlpha = 0.35 + 0.25 * Math.sin(t); c.fillStyle = "#c4b5fd"; c.beginPath(); c.ellipse(lx, ly - 12, 26, 18, 0, 0, TAU); c.fill(); c.restore(); } });
-  OBJ_COMPU_DAVID.alHablar = () => dialogoPersonaje(el.dlgPersonaje, { nombre: "Computadora de David Pro", icono: "💻", idTitulo: "eePersTit",
+  OBJ_COMPU_DAVID.alHablar = () => Misiones.esperando("compu-hackeo") ? hackearCompuDavid() : dialogoPersonaje(el.dlgPersonaje, { nombre: "Computadora de David Pro", icono: "💻", idTitulo: "eePersTit",
     paginas: ["*La pantalla ya no muestra Mario Kart.*", "*Muestra algo que respira.*", "«ARCHIVO: david_pro_alma.exe»", "*Sientes que te jala hacia adentro…*"],
     botones: [{ texto: "🌀 Entrar a la computadora", accion: "davidEntrar" }] });
   function entrarPlano() {
@@ -6520,6 +6535,955 @@ function montar(raiz, opciones = {}) {
         paginas: ["*El plano espiritual te expulsó.*", "*La compu sigue prendida. Puedes volver a entrar.*"] });
     }
   }
+  /* ---------------- EL MATA BEBÉS (final de la historia de Hora Vive) ----------------
+     Se desbloquea al terminar «Los de primero». Te la da Erick (ruta A: aceptaste la oferta de Valeria y lo dejaste solo)
+     o Franc (ruta B: rechazaste la oferta y Hora Vive te corrió).
+     1) Abres el paquete confidencial (vitrina de la sala de los líderes): frascos con fetos y, abajo, el suministro.
+     2) Erick/Franc te explica por qué se llaman los «Mata Bebés» (y por qué a veces se pescan fetos).
+     3) Entras al Cuarto de admisiones (planta baja): por dentro es la base de verdad de Hora Vive.
+     4) ¡JEFE! Todos los líderes de Hora Vive a la vez.  5) Destruyes las 3 pilas del suministro y el cuarto arde.
+     Al terminar, Hora Vive deja de existir (sus miembros desaparecen y la sala de los líderes queda clausurada). */
+  const CLAVE_MB = "espacio.mataBebes.v1";
+  let estMB = Object.assign({ cajas: [false, false, false], vencidos: false }, leer(CLAVE_MB, {}) || {});
+  const guardarMB = () => escribir(CLAVE_MB, estMB);
+  const mbActiva = () => !!Misiones.estado.activas.mataBebes;
+  const mbPaso = i => mbActiva() && Misiones.objetivoListo("mataBebes", i);
+  const hvExtinta = () => Misiones.estado.completadas.includes("mataBebes");
+  const hvFuera = () => hvExtinta() || mbActiva();                  // los líderes ya no están en su sala
+  const mbDador = () => (rutaLDP() === "B" ? "Franc" : "Erick");
+  const MB_DADOR_DONDE = () => (rutaLDP() === "B" ? "Franc (sala de estudio)" : "Erick (laboratorio de computación, tercer piso)");
+  const AP_PAU = { nombre: "Pau", piel: PIEL[2], pelo: PELO[2], peinado: "largo", ropa: "#f59e0b", pantalon: "#1f2937", accesorio: "ninguno" };
+  const AP_CHECO = () => (NPCS_EXTRA.find(n => n.id === "npc-checo-hv") || {}).apariencia || { nombre: "Checo", piel: PIEL[1], pelo: PELO[0], peinado: "rapado", ropa: "#7f1d1d", pantalon: "#111827", accesorio: "gorra" };
+  // Los de Hora Vive y los líderes desaparecen (están en admisiones o ya no existen)
+  ["npc-pau-hv", "npc-checo-hv", "lid-valeria", "lid-tomas", "lid-franc"].forEach(id => {
+    const n = NPCS_EXTRA.find(x => x.id === id); if (!n) return;
+    const v = n.visible; n.visible = () => (!v || v()) && !hvFuera();
+  });
+  { const v = NPC_ERICK.visible; NPC_ERICK.visible = () => (!v || v()) && !(hvExtinta() && rutaLDP() !== "B"); }   // en la ruta A, Erick sigue en el laboratorio
+  // El paquete de la vitrina: ahora sí se abre
+  { const o = OBJETOS_INTERACTIVOS.find(x => x.id === "lid-vitrina"), prev = o.paginas;
+    Object.defineProperty(o, "paginas", { get: () => (hvExtinta() || mbPaso(0)) ? ["*La vitrina está abierta. El paquete confidencial ya no está.*", "Solo queda el control de Xbox firmado por Erick y el vaso de Creamio."] : prev }); }
+  // Puerta de la sala de los líderes: durante la misión entras (ruta B: con la tarjeta vieja de Franc); al final queda clausurada
+  { const prev = PUERTA_LIDERES.alHablar;
+    PUERTA_LIDERES.alHablar = () => {
+      if (hvExtinta()) return dialogoPersonaje(el.dlgPersonaje, { nombre: "Puerta del fondo", icono: "🚪", idTitulo: "eePersTit",
+        paginas: ["*La puerta tiene una cinta amarilla cruzada: «CLAUSURADO».*", "El lector de tarjetas está arrancado de la pared.", "(Hora Vive ya no existe.)"] });
+      if (mbActiva() && !tarjetaAdentro()) { avisar("*bip* Pasas la tarjeta vieja de Franc. Funciona."); return empezarTransicion("lideres"); }
+      return prev();
+    }; }
+
+  // ---------- La arena: el Cuarto de admisiones por dentro (la base de verdad de Hora Vive) ----------
+  const CAJAS_HV = [[6, 2.2], [20, 2.2], [34, 2.2]].map(([x, y]) => [HV_ARENA.x0 + x, HV_ARENA.y0 + y]);   // las 3 pilas del suministro (al fondo)
+  const COBERTURAS_HV = [[7, 9], [17.2, 9], [27.4, 9], [12, 15.5], [22.4, 15.5], [5, 20.5], [31, 20.5]]
+    .map(([x, y]) => [HV_ARENA.x0 + x, HV_ARENA.y0 + y, HV_ARENA.x0 + x + 3, HV_ARENA.y0 + y + 1.2]);
+  const enArenaHV = (x, y) => y >= HV_ARENA.y0 - 1;
+  function construirArenaHV() {
+    const { x0, y0, x1, y1 } = HV_ARENA, rnd = azar(777);
+    const quemaduras = Array.from({ length: 26 }, () => [x0 + 1 + rnd() * (x1 - x0 - 2), y0 + 2 + rnd() * (y1 - y0 - 3), 0.6 + rnd() * 1.6]);
+    decals.push(() => {
+      rectPiso(x0, y0, x1 - x0, y1 - y0, "#d8d2e6", "#b9b2cc", 1);                 // el mismo morado clarito del cuarto de afuera
+      for (let x = x0 + 2; x < x1; x += 4) rectPiso(x, y0 + 0.2, 0.08, y1 - y0 - 0.4, "rgba(120,110,150,.18)", null, 0);
+      rectPiso(x0 + 12, y0 + 0.15, 16, 0.55, "#1f2937", null, 0);                    // letrero
+      const [lx, ly] = P(x0 + 20, y0 + 0.42, 0); c.save(); c.font = "800 13px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#fde68a";
+      c.fillText("ADMISIONES · ¡Bienvenidos, de primero! · HV", lx, ly); c.restore();
+      if (estMB.destruido) quemaduras.forEach(([x, y, r]) => discoPiso(x, y, r, "rgba(20,12,10,.55)", null, 0));
+    });
+    muroLinea(x0, y0, x1, y0); muroLinea(x0, y1, x1, y1); muroLinea(x0, y0, x0, y1); muroLinea(x1, y0, x1, y1);
+    decalLobbyAdm();
+    COBERTURAS_HV.forEach(([a, b, a2, b2], i) => {                    // escritorios de "admisión" (sirven de cobertura)
+      solidos.push([a, b, a2, b2]);
+      agregar((a + a2) / 2, (b + b2) / 2, 1.2, () => { caja(a, b, a2 - a, b2 - b, 0, 1.0, estMB.destruido ? "#3f3a36" : "#8b6f4e");
+        if (!estMB.destruido) { caja(a + 0.3, b + 0.2, 0.9, 0.5, 1.0, 0.08, "#f8fafc"); caja(a + 1.6, b + 0.25, 0.7, 0.4, 1.0, 0.35, "#111827"); } });
+    });
+    CAJAS_HV.forEach(([cx, cy], i) => {                               // pilas de cajas con el sello HV
+      solidos.push([cx - 1.6, cy - 1.1, cx + 1.6, cy + 1.1]);
+      agregar(cx, cy, 2.2, () => {
+        if (estMB.cajas[i]) { caja(cx - 1.6, cy - 1.0, 3.2, 2.0, 0, 0.35, "#2a211c"); return; }   // lo que quedó
+        for (let k = 0; k < 3; k++) caja(cx - 1.5 + (k % 2) * 0.15, cy - 1.0, 3.0, 2.0, k * 0.75, 0.72, k % 2 ? "#a47b4c" : "#b98b5a");
+        const [px, py] = P(cx, cy + 1.05, 1.2); c.save(); c.font = "900 14px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillStyle = "#b91c1c"; c.fillText("HV · NO ABRIR", px, py); c.restore();
+      });
+    });
+  }
+  // Las 3 pilas del suministro: se tiran después de la pelea
+  CAJAS_HV.forEach(([cx, cy], i) => INTERACTIVOS_ESCALERA.push({ id: `hv-caja-${i}`, nombre: "el suministro de Hora Vive", etiquetaAccion: "Tirar",
+    zona: [cx - 2.4, cy - 1.6, cx + 2.4, cy + 3.0], ancla: [cx, cy + 1.8], visible: () => estMB.vencidos && !estMB.cajas[i] && mbActiva(),
+    alHablar: () => tirarCajaHV(i) }));
+  const SALIR_HV = { id: "hv-salir", nombre: "del Cuarto de admisiones", etiquetaAccion: "Salir",
+    zona: [HV_ARENA.x0 + 16.5, HV_ARENA.y1 - 2.4, HV_ARENA.x0 + 23.5, HV_ARENA.y1], ancla: [HV_ARENA.x0 + 20, HV_ARENA.y1 - 1.2],
+    visible: () => !enemigos.some(e => e.esLiderHV), alHablar: () => empezarTransicion("hvSalir") };
+  INTERACTIVOS_ESCALERA.push(SALIR_HV);
+  // La puerta del Cuarto de admisiones en la planta baja (el cuarto morado del lobby)
+  const PUERTA_ADM = [37.6, FY + 24.0];                            // el hueco de la pared de arriba del cuarto morado
+  solidos.push([35.4, FY + 23.75, 39.8, FY + 24.25]);              // la puerta lo tapa (ya no se entra caminando)
+  const ENTRAR_ADM = { id: "puerta-admisiones", nombre: "Cuarto de admisiones",
+    get etiquetaAccion() { return Misiones.esperando("vv-restos-adm") || hvExtinta() ? "Revisar el" : "Entrar al"; },
+    zona: [PUERTA_ADM[0] - 2.6, PUERTA_ADM[1] - 2.6, PUERTA_ADM[0] + 2.6, PUERTA_ADM[1] + 0.2], ancla: [PUERTA_ADM[0], PUERTA_ADM[1] - 1.0],
+    alHablar: () => {
+      const base = { nombre: "Cuarto de admisiones", icono: "🚪", idTitulo: "eePersTit" };
+      if (!(mbPaso(1) || hvExtinta())) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Una puerta morada con un letrero: «ADMISIONES · Solo personal».*", "Está cerrada con llave. Adentro se escuchan voces… y algo que suena como cajas."] });
+      if (Misiones.esperando("vv-restos-adm")) { Misiones.hablo("vv-restos-adm"); const p = Misiones._pendiente || []; Misiones._pendiente = null; return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: p }); }
+      if (hvExtinta()) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Cinta amarilla en la puerta: «CLAUSURADO POR LA DIRECCIÓN».*", "Adentro todo está negro. Huele a quemado… y a formol.", "(Aquí era donde Hora Vive «admitía» a los de primero.)"] });
+      if (estMB.destruido) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Sale humo por debajo de la puerta. Ya no se puede entrar.*", `(Regresa con ${mbDador()}.)`] });
+      if (!tienePistola) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Se escuchan voces adentro. Son varios.*", "(Necesitas un arma antes de entrar. Consíguela con el encargado de objetos perdidos.)"] });
+      if (Misiones.esperando("mb-admisiones")) Misiones.hablo("mb-admisiones");
+      Misiones._pendiente = null;
+      empezarTransicion("hvArena");
+    } };
+  INTERACTIVOS_ESCALERA.push(ENTRAR_ADM);
+  // Afuera, en el lobby: la puerta (y después, el cuarto quemado). Se agrega al construir (encima del piso)
+  const decalLobbyAdm = () => decals.push(() => {
+    const [a, b] = P(PUERTA_ADM[0] - 2.2, PUERTA_ADM[1] - 0.22, 0), [a2, b2] = P(PUERTA_ADM[0] + 2.2, PUERTA_ADM[1] + 0.22, 0);
+    c.fillStyle = hvExtinta() || estMB.destruido ? "#292524" : "#4c1d95"; c.fillRect(a, b, a2 - a, b2 - b);
+    c.fillStyle = "#facc15"; c.beginPath(); c.arc(a2 - 8, (b + b2) / 2, 2.5, 0, TAU); c.fill();   // manija
+    if (hvExtinta() || estMB.destruido) {                             // el cuarto quemado y la cinta de clausurado
+      const [q0, q1] = P(28.4, FY + 24.4, 0), [q2, q3] = P(45.4, FY + 30.6, 0);
+      c.save(); c.globalAlpha = 0.55; c.fillStyle = "#1c1917"; c.fillRect(q0, q1, q2 - q0, q3 - q1); c.globalAlpha = 1;
+      for (let k = 0; k < 9; k++) { const [x, y] = P(29 + (k * 7.3) % 16, FY + 25 + (k * 3.1) % 5, 0); c.fillStyle = "rgba(0,0,0,.45)"; c.beginPath(); c.ellipse(x, y, 18 + (k % 3) * 8, 9, 0, 0, TAU); c.fill(); }
+      c.strokeStyle = "#facc15"; c.lineWidth = 5; c.beginPath(); c.moveTo(a - 10, b - 8); c.lineTo(a2 + 10, b2 + 6); c.moveTo(a - 10, b2 + 6); c.lineTo(a2 + 10, b - 8); c.stroke();
+      c.font = "800 9px system-ui"; c.textAlign = "center"; c.fillStyle = "#111"; c.fillText("CLAUSURADO", (a + a2) / 2, (b + b2) / 2 + 2); c.restore();
+    }
+  });
+
+  // ---------- ¡JEFE! Los líderes de Hora Vive ----------
+  const HV_HP = { valeria: 1100, tomas: 800, pau: 750, checo: 850, franc: 900 };   // ►► vida de cada líder
+  const HV_TURNO = 1.05;                                              // ►► segundos entre el ataque de un líder y el siguiente
+  let balasHV = [], caidasHV = [], charcosHV = [], hvTurno = 0, hvSigTurno = 0, hvCierre = 0;
+  const puntoHV = () => [HV_ARENA.x0 + 2 + Math.random() * (HV_ARENA.x1 - HV_ARENA.x0 - 4), HV_ARENA.y0 + 4 + Math.random() * (HV_ARENA.y1 - HV_ARENA.y0 - 6)];
+  function limpiarHV() { balasHV = []; caidasHV = []; charcosHV = []; }
+  function escenaEntradaHV() {
+    const A = rutaLDP() !== "B";
+    dialogoPersonaje(el.dlgPersonaje, { nombre: "Cuarto de admisiones", icono: "🚪", idTitulo: "eePersTit",
+      paginas: ["*Por dentro, el Cuarto de admisiones es MUCHO más grande de lo que se ve desde el lobby.*",
+        "*Escritorios de «admisión», un letrero que dice «¡Bienvenidos, de primero!»… y al fondo, cajas. Muchas cajas con el sello HV.*",
+        A ? "Valeria: «Sabía que alguien iba a abrir ese paquete. Nunca pensé que fueras tú, socio.»" : "Valeria: «El expulsado. Y viene solo. Qué valiente.»",
+        "Valeria: «Aquí es donde «admitimos» a los de primero. Les damos la bienvenida, su credencial… y su primera deuda.»",
+        "Tomás: *cierra su libreta* «Sin estas cajas no hay suplementos, no hay fiestas y no hay Mata Bebés. Las cuentas no mienten.»",
+        A ? "Franc: *se para junto a Valeria* «Lo siento, socio. De aquí arriba nadie se baja.»" : "Pau: «¿Y Franc? ¿Te mandó solito? Típico de Franc.»",
+        "Valeria: «¿Quieres saber quién nos manda los paquetes? Yo tampoco.»", "Valeria: «Solo llegan. Con un sello morado. Y una nota: «para la casa».»",
+        "Checo: «Ya estuvo de plática.»", ["⚠️ JEFE", "LOS LÍDERES DE HORA VIVE"]],
+      botones: [{ texto: "⚔️ ¡Pelear!", accion: "hvPelear" }] });
+  }
+  function arrancarHV() {
+    cerrarDlg(el.dlgPersonaje);
+    if (enemigos.some(e => e.esLiderHV)) return;
+    limpiarHV(); hvTurno = 0; hvSigTurno = performance.now() + 1800; hvCierre = 0;
+    const { x0, y0 } = HV_ARENA, lideres = [
+      { tipo: "valeria", nombre: "Valeria · Líder", ap: AP_VALERIA, x: 20, y: 5.5 },
+      { tipo: "tomas", nombre: "Tomás · Cuentas", ap: AP_TOMAS, x: 11, y: 6.5 },
+      { tipo: "pau", nombre: "Pau · Fiestas", ap: AP_PAU, x: 29, y: 6.5 },
+      { tipo: "checo", nombre: "Checo · Negocios", ap: AP_CHECO(), x: 6, y: 13 },
+    ];
+    if (rutaLDP() !== "B") lideres.push({ tipo: "franc", nombre: "Franc · Mata Bebés", ap: NPC_SALA.apariencia, x: 34, y: 13 });
+    lideres.forEach(l => enemigos.push({ esLiderHV: true, tipo: l.tipo, nombreJefe: l.nombre, ap: l.ap, hp: HV_HP[l.tipo], hpMax: HV_HP[l.tipo], radio: 0.85,
+      x: x0 + l.x, y: y0 + l.y, estado: "mover", et: 0, dir: "down", paso: 0, mov: false, ang: 0, golpeT: 0, hpPrev: HV_HP[l.tipo] }));
+    temblorEvento = 18; avisar("¡JEFE: LOS LÍDERES DE HORA VIVE!");
+    anunciar("Comienza la pelea contra los líderes de Hora Vive. Atacan por turnos: lee los avisos.");
+  }
+  function atacaLiderHV(en, ahora) {
+    en.estado = "carga"; en.et = ahora; en.mov = false;
+    en.ang = Math.atan2(jug.y - en.y, jug.x - en.x);
+    if (en.tipo === "tomas") en.blancos = Array.from({ length: 6 }, (_, k) => k < 2 ? [jug.x + (Math.random() - 0.5) * 1.5 + jugVelX() * 0.6, jug.y + (Math.random() - 0.5) * 1.5 + jugVelY() * 0.6] : puntoHV());
+    if (en.tipo === "pau" || en.tipo === "franc") en.blancos = Array.from({ length: en.tipo === "pau" ? 3 : 3 }, (_, k) => k === 0 ? [jug.x, jug.y] : [acotar(jug.x + (Math.random() - 0.5) * 6, HV_ARENA.x0 + 1.5, HV_ARENA.x1 - 1.5), acotar(jug.y + (Math.random() - 0.5) * 5, HV_ARENA.y0 + 3, HV_ARENA.y1 - 1.5)]);
+  }
+  const AVISO_HV = { valeria: 0.55, tomas: 0.3, pau: 0.4, checo: 0.65, franc: 0.45 };
+  let jugPrevHV = [0, 0], jugVelHV = [0, 0];
+  const jugVelX = () => jugVelHV[0], jugVelY = () => jugVelHV[1];
+  function actualizarLiderHV(en, dt) {
+    const ahora = performance.now();
+    if (!enArenaHV(jug.x, jug.y)) {                                   // te desmayaste o saliste: se cancela
+      enemigos.filter(e => e.esLiderHV).forEach(e => enemigos.splice(enemigos.indexOf(e), 1)); limpiarHV();
+      avisar("Los líderes de Hora Vive te sacaron. Regresa al Cuarto de admisiones para la revancha."); return;
+    }
+    const todos = enemigos.filter(e => e.esLiderHV);
+    if (en === todos[0]) {                                            // una sola vez por cuadro: turnos, velocidad tuya y peligros
+      if (dt > 0) { jugVelHV[0] += ((jug.x - jugPrevHV[0]) / dt - jugVelHV[0]) * Math.min(1, dt * 6); jugVelHV[1] += ((jug.y - jugPrevHV[1]) / dt - jugVelHV[1]) * Math.min(1, dt * 6); }
+      jugPrevHV = [jug.x, jug.y];
+      const vivos = todos.filter(e => !e.caido);
+      if (!vivos.length) { if (!hvCierre) hvCierre = ahora; if (ahora - hvCierre > 1600) hvVencidos(); return; }
+      if (ahora >= hvSigTurno) {
+        const libres = vivos.filter(e => e.estado === "mover");
+        if (libres.length) { const e2 = libres[hvTurno++ % libres.length]; atacaLiderHV(e2, ahora); }
+        hvSigTurno = ahora + HV_TURNO * 1000 * (vivos.length <= 2 ? 0.75 : 1);   // si quedan pocos, se apuran
+      }
+      actualizarPeligrosHV(dt, ahora);
+    }
+    if (en.caido) return;
+    const dx = jug.x - en.x, dy = jug.y - en.y, d = Math.hypot(dx, dy) || 1;
+    if (d < en.radio + 0.4 && ahora - (en.ultimoContacto || 0) > 900) { en.ultimoContacto = ahora; golpear(8); }
+    if (en.hp < en.hpPrev) { en.golpeT = ahora; en.hpPrev = en.hp; }
+    const e = (ahora - en.et) / 1000;
+    if (en.estado === "mover") {                                      // se mantienen a media distancia, rodeándote
+      const lejos = en.tipo === "checo" ? 4 : 6.5, a = Math.atan2(en.y - jug.y, en.x - jug.x) + 0.35 * dt * (en.tipo.length % 2 ? 1 : -1);
+      let tx = jug.x + Math.cos(a) * lejos - en.x, ty = jug.y + Math.sin(a) * lejos - en.y;
+      todos.forEach(o => { if (o !== en && !o.caido) { const ox = en.x - o.x, oy = en.y - o.y, od = Math.hypot(ox, oy); if (od < 2.5 && od > 0) { tx += ox / od * 2; ty += oy / od * 2; } } });
+      const tl = Math.hypot(tx, ty), vel = (en.tipo === "checo" ? 2.6 : 2.0) * dt;
+      if (tl > 0.4) { const vx = tx / tl * vel, vy = ty / tl * vel;
+        if (!colisiona(en.x + vx, en.y, 0.6)) en.x += vx; if (!colisiona(en.x, en.y + vy, 0.6)) en.y += vy;
+        en.mov = true; en.paso += vel * 5; en.dir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? "left" : "right") : (vy < 0 ? "up" : "down"); } else en.mov = false;
+      return;
+    }
+    if (en.estado === "carga") {
+      if (en.tipo !== "checo") en.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "up" : "down");
+      if (e < AVISO_HV[en.tipo]) return;
+      en.estado = "ataca"; en.et = ahora;
+      const vel = 9, disparo = (ang, v, tipo, dano) => balasHV.push({ x: en.x, y: en.y - 0.3, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, t0: ahora, tipo, dano });
+      if (en.tipo === "valeria") {                                    // CONTRATOS: abanico de tarjetas negras (y un anillo cuando está enojada)
+        const ap = Math.atan2(jug.y - en.y, jug.x - en.x);
+        for (let k = 0; k < 5; k++) disparo(ap + (k - 2) * 0.2, vel, "tarjeta", 9);
+        if (en.hp < en.hpMax * 0.5) for (let k = 0; k < 14; k++) disparo(k / 14 * TAU, 6.5, "tarjeta", 8);
+        sonidoTono(520, 0.08);
+      }
+      if (en.tipo === "tomas") { en.blancos.forEach((b, k) => caidasHV.push({ x: acotar(b[0], HV_ARENA.x0 + 1, HV_ARENA.x1 - 1), y: acotar(b[1], HV_ARENA.y0 + 2.5, HV_ARENA.y1 - 1), t0: ahora, cae: ahora + 900 + k * 120, tipo: "moneda", r: 1.2, dano: 10 })); sonidoTono(880, 0.06); }
+      if (en.tipo === "pau") { en.blancos.forEach((b, k) => caidasHV.push({ x: b[0], y: b[1], de: [en.x, en.y], t0: ahora, cae: ahora + 1000 + k * 150, tipo: "vaso", r: 1.5, dano: 8 })); sonidoTono(300, 0.08); }
+      if (en.tipo === "franc") { en.blancos.forEach((b, k) => caidasHV.push({ x: b[0], y: b[1], de: [en.x, en.y], t0: ahora, cae: ahora + 1050 + k * 160, tipo: "paquete", r: 1.7, dano: 12 })); sonidoTono(220, 0.1); }
+      if (en.tipo === "checo") sonidoTono(140, 0.15);
+      return;
+    }
+    if (en.estado === "ataca") {
+      if (en.tipo === "checo") {                                      // EMBESTIDA: en línea recta, se detiene al chocar
+        const v = 15 * dt, vx = Math.cos(en.ang) * v, vy = Math.sin(en.ang) * v;
+        const choca = colisiona(en.x + vx, en.y + vy, 0.6);
+        if (!choca) { en.x += vx; en.y += vy; en.mov = true; en.paso += v * 5; }
+        if (Math.hypot(jug.x - en.x, jug.y - en.y) < 1.2 && ahora - (en.ultimoContacto || 0) > 600) { en.ultimoContacto = ahora; golpear(14); }
+        if (choca || e > 0.85) { en.estado = "mover"; en.et = ahora; temblorEvento = Math.max(temblorEvento, choca ? 8 : 0); }
+        return;
+      }
+      if (e > 0.35) en.estado = "mover";
+    }
+  }
+  function actualizarPeligrosHV(dt, ahora) {
+    for (let i = balasHV.length - 1; i >= 0; i--) {
+      const b = balasHV[i]; b.x += b.vx * dt; b.y += b.vy * dt;
+      if (ahora - b.t0 > 3500 || colisiona(b.x, b.y, 0.05)) { balasHV.splice(i, 1); continue; }
+      if (Math.hypot(jug.x - b.x, jug.y - 0.2 - b.y) < 0.45) { balasHV.splice(i, 1); golpear(b.dano); }
+    }
+    for (let i = caidasHV.length - 1; i >= 0; i--) {
+      const q = caidasHV[i];
+      if (!q.hecho && ahora >= q.cae) {
+        q.hecho = true; if (Math.hypot(jug.x - q.x, jug.y - q.y) < q.r) golpear(q.dano);
+        if (q.tipo === "paquete") { explotar(q.x, q.y, 0.75, false); temblorEvento = Math.max(temblorEvento, 7); }
+        else sonidoTono(q.tipo === "moneda" ? 1200 : 260, 0.06);
+        if (q.tipo === "vaso") charcosHV.push({ x: q.x, y: q.y, r: 1.4, fin: ahora + 6000 });
+      }
+      if (q.hecho && ahora > q.cae + 500) caidasHV.splice(i, 1);
+    }
+    for (let i = charcosHV.length - 1; i >= 0; i--) {                // la malteada pegajosa te frena
+      const ch = charcosHV[i]; if (ahora > ch.fin) { charcosHV.splice(i, 1); continue; }
+      if (Math.hypot(jug.x - ch.x, jug.y - ch.y) < ch.r) lentoHasta = ahora + 200;
+    }
+  }
+  function hvVencidos() {
+    enemigos.filter(e => e.esLiderHV).forEach(e => enemigos.splice(enemigos.indexOf(e), 1)); limpiarHV(); lentoHasta = 0;
+    estMB.vencidos = true; guardarMB();
+    if (Misiones.esperando("mb-lideres")) Misiones.hablo("mb-lideres");
+    Misiones._pendiente = null;
+    dialogoPersonaje(el.dlgPersonaje, { nombre: "Valeria", apariencia: AP_VALERIA, idTitulo: "eePersTit",
+      paginas: ["*Los líderes de Hora Vive están en el suelo.*", "Valeria: «…no entiendes. Nosotros solo repartíamos.»",
+        "Valeria: «El que manda los paquetes nunca ha pisado este cuarto. Nadie lo ha visto entrar a la escuela. Nadie lo ha visto salir.»",
+        "Valeria: «Una vez llegó un paquete sin sello. Solo decía, a mano: «Yo llegué primero. Ustedes solo son la casa.»»",
+        "Tomás: «Le pagábamos a una cuenta sin nombre. Solo una letra: P.»",
+        "*Por un segundo, todas las pantallas de los escritorios parpadean en morado. Luego se apagan.*",
+        ["🏆 LÍDERES DE HORA VIVE DERROTADOS", "Ahora destruye el suministro: las 3 pilas de cajas del fondo (E para tirarlas)."]] });
+    anunciar("Líderes de Hora Vive derrotados. Destruye las tres pilas de cajas del fondo.");
+  }
+  function tirarCajaHV(i) {
+    if (estMB.cajas[i]) return;
+    estMB.cajas[i] = true; guardarMB();
+    const [cx, cy] = CAJAS_HV[i];
+    for (let k = 0; k < 4; k++) setTimeout(() => explotar(cx + (Math.random() - 0.5) * 2.4, cy + (Math.random() - 0.5) * 1.4, 0.8 + Math.random() * 0.4, k === 3), k * 160);
+    temblorEvento = 16;
+    const quedan = estMB.cajas.filter(x => !x).length;
+    if (quedan) { avisar(`¡Suministro destruido! Quedan ${quedan}.`); return; }
+    // ¡TODO EL CUARTO ARDE!
+    estMB.destruido = true; guardarMB();
+    for (let k = 0; k < 14; k++) setTimeout(() => { const [x, y] = puntoHV(); explotar(x, y, 0.9 + Math.random() * 0.8, k % 4 === 0); temblorEvento = 24; }, 500 + k * 170);
+    setTimeout(() => {
+      if (Misiones.esperando("mb-suministro")) Misiones.hablo("mb-suministro");
+      Misiones._pendiente = null;
+      dialogoPersonaje(el.dlgPersonaje, { nombre: "Cuarto de admisiones", icono: "🔥", idTitulo: "eePersTit",
+        paginas: ["*Las cajas revientan. Polvo blanco por todos lados. Frascos rotos rodando por el piso.*",
+          "*Una chispa de una pantalla cae sobre el polvo… y todo el Cuarto de admisiones empieza a arder.*",
+          ["🔥 HORA VIVE DEJÓ DE EXISTIR", "Sin paquetes no hay suplementos. Sin suplementos no hay dinero. Sin dinero no hay Mata Bebés."],
+          `(¡Sal antes de que se caiga el techo! Luego regresa con ${MB_DADOR_DONDE()}.)`],
+        botones: [{ texto: "🏃 Salir corriendo", accion: "hvSalir" }] });
+    }, 3000);
+  }
+  // ---------- Dibujo de la pelea ----------
+  function dibujarLiderHV(en) {
+    const [px, py] = P(en.x, en.y, 0), ahora = performance.now();
+    if (en.estado === "carga" && !en.caido) {                         // aviso: brillo rojo + (Checo) la línea de su embestida
+      const p = 0.5 + 0.5 * Math.sin(ahora / 40);
+      c.save(); c.fillStyle = `rgba(239,68,68,${0.18 + 0.15 * p})`; c.beginPath(); c.ellipse(px, py - 30, 34, 46, 0, 0, TAU); c.fill(); c.restore();
+      if (en.tipo === "checo") { const [tx, ty] = P(en.x + Math.cos(en.ang) * 12, en.y + Math.sin(en.ang) * 12, 0);
+        c.save(); c.setLineDash([12, 8]); c.strokeStyle = "rgba(220,38,38,.9)"; c.lineWidth = 6; c.beginPath(); c.moveTo(px, py - 10); c.lineTo(tx, ty - 10); c.stroke(); c.restore(); }
+      if (en.tipo === "valeria") { c.save(); c.globalAlpha = 0.25; c.fillStyle = "#111827"; const [tx, ty] = P(en.x + Math.cos(en.ang) * 7, en.y + Math.sin(en.ang) * 7, 0);
+        const a0 = Math.atan2(ty - py, tx - px), L = Math.hypot(tx - px, ty - py); c.beginPath(); c.moveTo(px, py - 20); c.arc(px, py - 20, L, a0 - 0.42, a0 + 0.42); c.closePath(); c.fill(); c.restore(); }
+    }
+    const flash = ahora - en.golpeT < 90 && !en.caido;
+    if (flash) c.filter = "brightness(1.9)";
+    dibujarAvatar(c, en.ap, { x: px, y: en.caido ? py + 14 : py, dir: en.caido ? "down" : en.dir, mov: en.mov, paso: en.paso, esc: 1.45, sentado: !!en.caido });
+    c.filter = "none";
+    c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    const w = c.measureText(en.nombreJefe).width + 12; rr(c, px - w / 2, py - 96, w, 16, 8, "rgba(76,5,25,.88)"); c.fillStyle = "#fecdd3"; c.fillText(en.nombreJefe, px, py - 87.5);
+    if (en.caido) { c.font = "22px system-ui"; c.fillText("😵", px + 30, py - 70); return; }
+    const wB = 64, pct = acotar(en.hp / en.hpMax, 0, 1); rr(c, px - wB / 2, py - 76, wB, 6, 3, "rgba(0,0,0,.5)"); rr(c, px - wB / 2, py - 76, wB * pct, 6, 3, pct > 0.4 ? "#f43f5e" : "#facc15");
+  }
+  function dibujarPeligrosHV(dyn) {
+    if (!balasHV.length && !caidasHV.length && !charcosHV.length) return;
+    const ahora = performance.now();
+    charcosHV.forEach(ch => dyn.push({ k: ch.x + ch.y - 0.3, h: 0, fn: () => {
+      const [px, py] = P(ch.x, ch.y, 0), [ex] = P(ch.x + ch.r, ch.y, 0), rx = ex - px, a = Math.min(1, (ch.fin - ahora) / 1200);
+      c.save(); c.globalAlpha = 0.8 * a; c.fillStyle = "#f9a8d4"; c.beginPath(); c.ellipse(px, py, rx, rx * 0.5, 0, 0, TAU); c.fill();
+      c.fillStyle = "#fbcfe8"; c.beginPath(); c.ellipse(px - rx * 0.25, py - 2, rx * 0.35, rx * 0.14, 0, 0, TAU); c.fill(); c.restore(); } }));
+    caidasHV.forEach(q => {
+      dyn.push({ k: q.x + q.y - 0.2, h: 0, fn: () => {                // el círculo de aviso (se va llenando)
+        const [px, py] = P(q.x, q.y, 0), [ex] = P(q.x + q.r, q.y, 0), rx = ex - px;
+        if (!q.hecho) { const p = acotar((ahora - q.t0) / (q.cae - q.t0), 0, 1), col = q.tipo === "moneda" ? "234,179,8" : q.tipo === "vaso" ? "236,72,153" : "220,38,38";
+          c.fillStyle = `rgba(${col},${0.12 + 0.18 * p})`; c.beginPath(); c.ellipse(px, py, rx, rx * 0.5, 0, 0, TAU); c.fill();
+          c.fillStyle = `rgba(${col},.35)`; c.beginPath(); c.ellipse(px, py, rx * p, rx * 0.5 * p, 0, 0, TAU); c.fill();
+          c.strokeStyle = `rgba(${col},.95)`; c.lineWidth = 2; c.setLineDash([6, 4]); c.beginPath(); c.ellipse(px, py, rx, rx * 0.5, 0, 0, TAU); c.stroke(); c.setLineDash([]); }
+        else { const f = (ahora - q.cae) / 500; c.save(); c.globalAlpha = 1 - f; c.strokeStyle = "#fff"; c.lineWidth = 3; c.beginPath(); c.ellipse(px, py, rx * (0.6 + f), rx * 0.5 * (0.6 + f), 0, 0, TAU); c.stroke(); c.restore(); } } });
+      if (q.hecho) return;
+      const p = acotar((ahora - q.t0) / (q.cae - q.t0), 0, 1);
+      dyn.push({ k: q.x + q.y + 2, h: 95, fn: () => {                  // lo que cae (o vuela en arco)
+        let x = q.x, y = q.y, z;
+        if (q.de) { x = q.de[0] + (q.x - q.de[0]) * p; y = q.de[1] + (q.y - q.de[1]) * p; z = Math.sin(p * Math.PI) * 4 + (1 - p) * 1; } else z = (1 - p) * (1 - p) * 9;
+        const [px, py] = P(x, y, z);
+        c.save(); c.translate(px, py); c.rotate(p * 8);
+        if (q.tipo === "moneda") { c.fillStyle = "#facc15"; c.strokeStyle = "#a16207"; c.lineWidth = 2; c.beginPath(); c.ellipse(0, 0, 9, 9 * Math.abs(Math.cos(p * 12)) + 2, 0, 0, TAU); c.fill(); c.stroke(); }
+        if (q.tipo === "vaso") { c.fillStyle = "#fbcfe8"; c.fillRect(-6, -9, 12, 16); c.fillStyle = "#ec4899"; c.fillRect(-6, -9, 12, 4); c.fillStyle = "#fff"; c.fillRect(-1, -15, 2, 7); }
+        if (q.tipo === "paquete") { c.fillStyle = "#c08a4b"; c.fillRect(-11, -9, 22, 18); c.strokeStyle = "#7c2d12"; c.lineWidth = 2; c.strokeRect(-11, -9, 22, 18); c.fillStyle = "#b91c1c"; c.font = "800 7px system-ui"; c.textAlign = "center"; c.fillText("HV", 0, 3); }
+        c.restore(); } });
+    });
+    balasHV.forEach(b => dyn.push({ k: b.x + b.y + 1, h: 90, fn: () => {
+      const [px, py] = P(b.x, b.y, 0.7); c.save(); c.translate(px, py); c.rotate(Math.atan2(b.vy, b.vx));
+      c.fillStyle = "#111827"; c.strokeStyle = "#f43f5e"; c.lineWidth = 2; c.fillRect(-9, -5, 18, 10); c.strokeRect(-9, -5, 18, 10);
+      c.fillStyle = "#f43f5e"; c.font = "800 6px system-ui"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("HV", 0, 0.5); c.restore(); } }));
+  }
+  // Humo y fuego en el cuarto después de destruirlo (mientras sigas adentro)
+  function dibujarFuegoHV() {
+    if (!estMB.destruido || !enArenaHV(jug.x, jug.y)) return;
+    const t = performance.now() / 1000;
+    c.save(); c.fillStyle = `rgba(234,88,12,${0.12 + 0.05 * Math.sin(t * 7)})`; c.fillRect(0, 0, ancho, alto);
+    for (let k = 0; k < 10; k++) { const x = ((k * 211 + t * (20 + k * 4)) % (ancho + 300)) - 150, y = alto - ((k * 89 + t * 60) % (alto + 200)), r = 90 + k * 12;
+      const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, "rgba(30,20,20,.35)"); gr.addColorStop(1, "rgba(30,20,20,0)"); c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); }
+    c.restore();
+  }
+
+  /* ---------------- EL ENCUENTRO DE LA VERDADERA VERDAD (la última del culto del Güero) ----------------
+     Se desbloquea con «El Mata Bebés» y «El influencer del Güero». El culto tiene nuevas ideas de quién es el dios
+     (¿el Primogénito?), investigan a David Pro con Brandon… y descubren que Brandon ES el Güero. Al final, los 3
+     artilugios del Güero se comprimen en la máquina Smith: la Reliquia Suprema, que desbloquea el Visor de energía. */
+  const vvPaso = i => !!Misiones.estado.activas.verdaderaVerdad && Misiones.objetivoListo("verdaderaVerdad", i);
+  const vvHecha = () => Misiones.estado.completadas.includes("verdaderaVerdad");
+  const ARTILUGIOS = ["reliquia-guero", "historias-culto", "botella-brandon"];
+  // Brandon en la sala del culto (desde que lo llevas; y ya para siempre, en su "trono")
+  const NPC_BRANDON_CULTO = npcHablante({ id: "vv-brandon", nombre: "Brandon", x: SALA_CULTO.mesa[0], y: SALA_CULTO.mesa[1] + 2.6,
+    apariencia: NPC_BRANDON.apariencia,
+    paginas: () => vvHecha()
+      ? ["Brandon: «Me hicieron un trono con sillas del salón, bro.»", "Brandon: «El Profeta me trae agua cada 20 minutos. No le digo que no porque se pone triste.»",
+         "Brandon: «Y lo de David… neta, no le vuelvo a hablar sin el visor ese.»"]
+      : ["Brandon: «Estos vatos me caen bien. Están bien raros, pero me caen bien.»"] });
+  NPC_BRANDON_CULTO.visible = () => vvPaso(1) || vvHecha();
+  { const v = NPC_BRANDON.visible; NPC_BRANDON.visible = () => (!v || v()) && !(vvPaso(1) || vvHecha()); }   // ya no está en el gimnasio
+  // La Smith: comprimir los 3 artilugios
+  function comprimirEnSmith() {
+    const base = { nombre: "Máquina Smith", icono: "🏋️", idTitulo: "eePersTit" };
+    const faltan = ARTILUGIOS.filter(id => !inventario.misiones.includes(id));
+    if (faltan.length) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Necesitas los tres artilugios del Güero para comprimirlos.*",
+      ["Te falta:", ...faltan.map(id => "• " + (ITEMS_MISION[id] ? ITEMS_MISION[id].nombre : id))]] });
+    inventario.misiones = inventario.misiones.filter(q => !ARTILUGIOS.includes(q)); guardarInventario();
+    Misiones.hablo("smith-reliquias"); const p = Misiones._pendiente || []; Misiones._pendiente = null;
+    temblorDialogo = 9; try { sonidoExplosion(false); } catch (e) {}
+    dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: p });
+  }
+
+  // Erick del laboratorio: que no salga la escena vieja de «Los de primero» cuando te da (o recibe) esta misión
+  { const prev = NPC_ERICK_LAB.alHablar;
+    NPC_ERICK_LAB.alHablar = () => (!ldpActiva() && (Misiones.disponible("mataBebes") || Misiones.estado.activas.mataBebes))
+      ? dialogoPersonaje(el.dlgPersonaje, { nombre: NPC_ERICK_LAB.nombre, apariencia: NPC_ERICK_LAB.apariencia, idTitulo: "eePersTit", npcId: "ldp-erick-lab", paginas: NPC_ERICK_LAB.paginas() }) : prev(); }
+  // Que los eventos secretos del culto no se metan en medio de esta misión
+  { const prev = NPC_BRANDON.alHablar;
+    NPC_BRANDON.alHablar = () => Misiones.esperando("npc-brandon") ? dialogoPersonaje(el.dlgPersonaje, { nombre: "Brandon", apariencia: NPC_BRANDON.apariencia, idTitulo: "eePersTit", npcId: "npc-brandon", paginas: ["¿Qué onda?"] }) : prev(); }
+  [NPC_MARSH, NPC_MARSH_CULTO].forEach(n => { const prev = n.alHablar;
+    n.alHablar = () => Misiones.esperando("npc-marshmello") ? dialogoPersonaje(el.dlgPersonaje, { nombre: n.nombre, apariencia: n.apariencia, idTitulo: "eePersTit", npcId: "npc-marshmello", paginas: ["¡Hermano!"] }) : prev(); });
+  { const prev = NPC_BUSCADOR.alHablar;
+    NPC_BUSCADOR.alHablar = () => (Misiones.disponible("verdaderaVerdad") || Misiones.estado.activas.verdaderaVerdad)
+      ? dialogoPersonaje(el.dlgPersonaje, { nombre: "El Buscador", apariencia: NPC_BUSCADOR.apariencia, idTitulo: "eePersTit", npcId: "npc-buscador", paginas: ["Hermano en la fe."] }) : prev(); }
+  // Lo que dicen después de que Hora Vive deja de existir
+  { const prev = NPC_SALA.paginas;
+    NPC_SALA.paginas = () => hvExtinta()
+      ? (rutaLDP() === "B" ? ["*Franc está estudiando. El libro está al derecho.*", "Franc: «No me mires así. Estoy estudiando de verdad, hermano.»", "Franc: «…tengo un examen de recuperación por TODO lo del año.»"]
+        : ["*Franc tiene un citatorio en la mano. No te mira.*", "Franc: «Tú me tiraste, socio. Ojalá haya valido la pena.»"])
+      : (typeof prev === "function" ? prev() : prev); }
+  { const prev = NPC_ERICK_LAB.paginas;
+    NPC_ERICK_LAB.paginas = () => (hvExtinta() && rutaLDP() !== "B")
+      ? ["*Erick está construyendo algo en Minecraft. Por primera vez se le ve tranquilo.*", "Erick: «Es una estatua tuya. No te emociones, todavía no tiene cara.»",
+         "Erick: «La consola vieja no se ha vuelto a prender. …creo.»"]
+      : (typeof prev === "function" ? prev() : prev); }
+  { const prev = NPC_GLAZER.paginas;
+    NPC_GLAZER.paginas = () => hvExtinta() ? ["Bro… ya no llega el cargamento. Dicen que se quemó todo.", "Ahora entreno natural. Me duele TODO.", "…pero me siento mejor, neta."]
+      : (typeof prev === "function" ? prev() : prev); }
+  /* ---------------- LOGROS 🏆 ----------------
+     Se guardan en CLAVE_LOGROS y se ven en el Inventario. Los secretos salen como «???» hasta que los consigues. */
+  const CLAVE_LOGROS = "espacio.logros.v1";
+  const LOGROS = {
+    "empleado-creamio": { nombre: "Empleado de Creamio", desc: "Completa la misión de Ratatoskar." },
+    "tercero-discordia": { nombre: "El tercero en discordia", desc: "Intentaste formar parte de una conversación en la que claramente no estabas incluido.", secreto: true },
+    "barista-pro": { nombre: "Barista profesional", desc: "Prepara 50 bebidas correctamente." },
+    "agua-calcetin": { nombre: "Agua de calcetín", desc: "Entrega cinco pedidos incorrectos." },
+    "cliente-frecuente": { nombre: "Cliente frecuente", desc: "Compra diez cosas en Creamio." },
+    "explotacion-laboral": { nombre: "Explotación laboral", desc: "Completa diez turnos en Creamio." },
+    "conversacion-productiva": { nombre: "Conversación productiva", desc: "Recibe diez respuestas de una sola palabra de Ratatoskar." },
+  };
+  let logros = Object.assign({ hechos: [], cont: {} }, leer(CLAVE_LOGROS, {}) || {});
+  const guardarLogros = () => escribir(CLAVE_LOGROS, logros);
+  function desbloquearLogro(id) {
+    if (!LOGROS[id] || logros.hechos.includes(id)) return;
+    logros.hechos.push(id); guardarLogros();
+    avisar(`🏆 ${LOGROS[id].secreto ? "Logro secreto" : "Logro"} desbloqueado: ${LOGROS[id].nombre}`);
+    anunciar(`Logro desbloqueado: ${LOGROS[id].nombre}. ${LOGROS[id].desc}`);
+  }
+  function contarLogro(clave, meta, id, n = 1) { logros.cont[clave] = (logros.cont[clave] || 0) + n; guardarLogros(); if (logros.cont[clave] >= meta) desbloquearLogro(id); }
+  const htmlLogros = () => `<h3 class="ee-inv-sub">Logros 🏆 (${logros.hechos.length} / ${Object.keys(LOGROS).length})</h3>
+    <ul class="ee-arma-lista">${Object.entries(LOGROS).map(([id, l]) => { const ok = logros.hechos.includes(id);
+      return `<li class="ee-arma-op"${ok ? "" : ' style="opacity:.55"'}><div><b>${ok ? "🏆 " + esc(l.nombre) : (l.secreto ? "🔒 ???" : "🔒 " + esc(l.nombre))}</b><br><span class="ee-nota">${ok || !l.secreto ? esc(l.desc) : "Logro secreto."}</span></div></li>`; }).join("")}</ul>`;
+  function contarCompraCreamio() { contarLogro("compras-creamio", 10, "cliente-frecuente"); }
+
+  /* ---------------- RATATOSKAR, DUEÑA DE CREAMIO · «¡Un café para llevar!» ----------------
+     Seca y cortante con el jugador. Con Óscar, en cambio, tiene todo el tiempo del mundo (hasta deja su negocio solo).
+     Lugares: detrás del mostrador de Creamio, o sentada con Óscar en la mesita de adentro.
+     Su misión enseña el minijuego «Creamio Simulator» (prepara bebidas antes de que se acabe la paciencia del cliente),
+     que después se puede repetir para ganar $100 por turno. */
+  const CLAVE_RATA = "espacio.ratatoskar.v1";
+  let estRata = Object.assign({ escuchada: 0 }, leer(CLAVE_RATA, {}) || {});
+  const guardarRata = () => escribir(CLAVE_RATA, estRata);
+  const AP_RATA = { nombre: "Ratatoskar", piel: PIEL[1], pelo: "#6b3f1f", peinado: "largo", ropa: "#7c4a2d", pantalon: "#292524", accesorio: "ninguno", mochila: false };
+  const AP_OSCAR = { nombre: "Óscar", piel: PIEL[2], pelo: PELO[0], peinado: "corto", ropa: "#0ea5e9", pantalon: "#1e3a8a", accesorio: "ninguno", mochila: true };
+  const MESA_CREAMIO = PL(20.85, 21.25), RATA_MOSTRADOR = PL(19.7, 18.45);
+  const SILLA_RATA = [MESA_CREAMIO[0] - 1.35, MESA_CREAMIO[1] + 0.1], SILLA_OSCAR = [MESA_CREAMIO[0] + 1.35, MESA_CREAMIO[1] + 0.1];
+  const PAGO_TURNO = 100, CLIENTES_TURNO = 5;
+  let quietoHasta = 0, rataConOscarHasta = 0, oscarCiclo = { presente: false, hasta: 0 }, interrupciones = { n: 0, t: 0 }, cercaOscarS = 0;
+  const cafeHecho = () => Misiones.estado.completadas.includes("cafeParaLlevar");
+  const cafeActivo = () => !!Misiones.estado.activas.cafeParaLlevar;
+  function oscarPresente() {
+    const ahora = performance.now();
+    if (ahora < rataConOscarHasta) return true;
+    if (cafeActivo()) return Misiones.completa("cafeParaLlevar");      // ya acabaste el turno: ella está con Óscar
+    if (!cafeHecho()) return false;
+    if (ahora >= oscarCiclo.hasta) { oscarCiclo.presente = !oscarCiclo.presente; oscarCiclo.hasta = ahora + (oscarCiclo.presente ? 70000 : 45000) * (0.7 + Math.random() * 0.6); interrupciones.n = 0; }
+    return oscarCiclo.presente;
+  }
+  const ponerEn = (n, x, y) => { if (n.x === x && n.y === y) return; n.x = x; n.y = y; n.ancla = [x, y + 1.1]; n.zona = [x - 2.2, y - 2.2, x + 2.2, y + 2.6]; n.hit = [x - 1.2, y - 1.2, x + 1.2, y + 1.2]; };
+  const rataSentada = () => !Misiones.estado.activas.cafeParaLlevar && !cafeHecho() ? true : oscarPresente();   // antes de la misión está sola en la mesa, revisando pedidos
+  const NPC_RATA = npcHablante({ id: "npc-rata", nombre: "Ratatoskar", x: SILLA_RATA[0], y: SILLA_RATA[1], apariencia: AP_RATA, paginas: ["Ratatoskar: «Hola.»"] });
+  const NPC_OSCAR = npcHablante({ id: "npc-oscar", nombre: "Óscar", x: SILLA_OSCAR[0], y: SILLA_OSCAR[1], apariencia: AP_OSCAR, paginas: ["Óscar: «¿Qué onda?»"] });
+  NPC_RATA.visible = () => { const s = rataSentada(); ponerEn(NPC_RATA, s ? SILLA_RATA[0] : RATA_MOSTRADOR[0], s ? SILLA_RATA[1] : RATA_MOSTRADOR[1]); return true; };
+  NPC_OSCAR.visible = () => oscarPresente();
+  const dibujarSentado = (n, dir) => (px, py) => {
+    const sent = n === NPC_OSCAR || rataSentada();
+    dibujarAvatar(c, n.apariencia, { x: px, y: py + (sent ? 6 : 0), dir: "down", sentado: sent, esc: sent ? 0.92 : 1 });
+    c.font = "600 11px system-ui, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    const w = c.measureText(n.nombre).width + 12, ly = py - (sent ? 60 : 66); rr(c, px - w / 2, ly, w, 16, 8, "rgba(7,48,31,.86)"); c.fillStyle = "#eaf6ef"; c.fillText(n.nombre, px, ly + 8.5);
+    marcaMision(n.id, px, py);
+    if (n === NPC_RATA && sent && cercaOscarS >= 300 && oscarPresente() && cafeHecho()) {   // la conversación infinita (después de 5 minutos cerca)
+      const t = PLATICA_RATA[Math.floor(performance.now() / 4200) % PLATICA_RATA.length], [ox] = P(SILLA_OSCAR[0], SILLA_OSCAR[1], 0), bxc = t.startsWith("Óscar") ? ox : px;
+      c.font = "600 11px system-ui"; const w = Math.min(280, c.measureText(t).width + 16), bx = bxc - w / 2, by = py - 92;
+      rr(c, bx, by, w, 22, 9, "rgba(255,255,255,.96)"); c.fillStyle = "#1f2937"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(t, bx + w / 2, by + 11, w - 10);
+    }
+    return true;
+  };
+  NPC_RATA.dibujar = dibujarSentado(NPC_RATA, "right");
+  NPC_OSCAR.dibujar = dibujarSentado(NPC_OSCAR, "left");
+  // La mesita de Creamio (y los globos de su plática secreta)
+  objetoInteractivo({ id: "mesa-creamio", nombre: "Mesa de Creamio", decorativo: true, x: MESA_CREAMIO[0], y: MESA_CREAMIO[1],
+    solido: [MESA_CREAMIO[0] - 0.7, MESA_CREAMIO[1] - 0.45, MESA_CREAMIO[0] + 0.7, MESA_CREAMIO[1] + 0.45],
+    dibujar: o => {
+      const [px, py] = P(o.x, o.y, 0.75), [ex] = P(o.x + 0.75, o.y, 0.75), r = ex - px;
+      c.fillStyle = "rgba(0,0,0,.15)"; c.beginPath(); c.ellipse(px + 3, py + 14, r, r * 0.45, 0, 0, TAU); c.fill();
+      c.fillStyle = "#c08a5a"; c.beginPath(); c.ellipse(px, py, r, r * 0.55, 0, 0, TAU); c.fill(); c.strokeStyle = "#7c4a2d"; c.lineWidth = 2; c.stroke();
+      c.fillStyle = "#f5f5f4"; c.fillRect(px - 10, py - 6, 6, 7); c.fillRect(px + 5, py - 5, 6, 7);                  // dos vasos de Creamio
+      c.fillStyle = "#e7a6c0"; c.fillRect(px - 10, py - 6, 6, 2); c.fillRect(px + 5, py - 5, 6, 2);
+      if (!(cafeActivo() || cafeHecho()) && !oscarPresente()) { c.fillStyle = "#fff"; c.save(); c.translate(px - 2, py + 2); c.rotate(-0.2); c.fillRect(-7, -5, 14, 10); c.restore(); }   // sus pedidos
+    } });
+  const PLATICA_RATA = ["Ratatoskar: «No, pero es que el otro día pasó algo en Creamio.»", "Óscar: «¿Qué pasó?»", "Ratatoskar: «Mira, te voy a contar.»",
+    "Ratatoskar: «Entró uno y pidió un capuchino sin café.»", "Óscar: «¿Y qué le diste?»", "Ratatoskar: «Leche con espuma. Se fue feliz.»", "Óscar: «Jajaja, no manches.»",
+    "Ratatoskar: «Y el que me ayuda a veces… ni sé cómo se llama.»", "Óscar: «¿El que te atiende los pedidos?»", "Ratatoskar: «Ese. Bueno, el punto es que…»",
+    "Ratatoskar: «…y luego le dije: no, Óscar no está. Y sí estabas.»", "Óscar: «Siempre estoy.»", "Ratatoskar: «Por eso.»"];
+  function revisarPlaticaRata(dt) {                                  // cuenta el tiempo que llevas cerca de los dos
+    if (!cafeHecho() || !oscarPresente()) return;
+    if (Math.hypot(jug.x - MESA_CREAMIO[0], jug.y - MESA_CREAMIO[1]) > 5.5) return;
+    const antes = cercaOscarS; cercaOscarS += dt;
+    if (antes < 300 && cercaOscarS >= 300 && !estRata.escuchada) { estRata.escuchada = 1; guardarRata(); avisar("…Ratatoskar está hablando MUCHO. Con Óscar, claro."); }
+  }
+  const unaPalabra = () => contarLogro("rata-una-palabra", 10, "conversacion-productiva");
+  const baseRata = () => ({ nombre: "Ratatoskar", apariencia: AP_RATA, idTitulo: "eePersTit" });
+  function hablarRata() {
+    const ahora = performance.now(), base = baseRata();
+    if (Misiones.completa("cafeParaLlevar")) return dialogoPersonaje(el.dlgPersonaje, { ...base, npcId: "npc-rata", paginas: ["…"] });   // cobrar
+    if (!cafeActivo() && !cafeHecho()) {                               // 1. Una conversación interrumpida
+      return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Ratatoskar está sentada en una mesa de Creamio, revisando unos pedidos.*",
+        "Tú: «¿Qué haces?»", "Ratatoskar: «Revisando unos pedidos.»", "Tú: «¿Tienes mucho trabajo?»", "Ratatoskar: «Sí.»", "Tú: «¿Necesitas ayuda?»", "Ratatoskar: «Pues…»",
+        "*Ratatoskar voltea hacia la entrada de Creamio.*", "Ratatoskar: «¿Ese no es Óscar?»", "Tú: «¿Entonces necesitas que te ayude o…?»", "Ratatoskar: «Bueno, voy a hablar con Óscar.»"],
+        botones: [{ texto: "…", accion: "rataEscena1" }] });
+    }
+    if (ahora < rataConOscarHasta) { unaPalabra(); return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["Ratatoskar: «Estoy hablando con Óscar.»"] }); }
+    if (cafeActivo() && Misiones.esperando("rata-mostrador")) {        // 2. El problema de Creamio
+      Misiones.hablo("rata-mostrador"); Misiones._pendiente = null;
+      return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Ratatoskar está detrás del mostrador. Hay varios clientes esperando sus bebidas.*",
+        "Tú: «¿Ahora sí necesitas ayuda?»", "Ratatoskar: «Sí, tengo muchos pedidos.»", "Tú: «¿Y qué quieres que haga?»", "Ratatoskar: «Prepara los cafés.»",
+        "Tú: «¿Me vas a pagar?»", `Ratatoskar: «Te doy ${PAGO_TURNO} monedas si atiendes a cinco clientes.»`, "Tú: «¿Y cómo se preparan?»", "Ratatoskar: «Ahí están las instrucciones.»",
+        "*Señala una hoja pegada junto a la máquina de café.*", "Ratatoskar: «No está difícil.»"],
+        botones: [{ texto: "☕ Pasar detrás del mostrador", accion: "rataTurno" }, { texto: "Regreso más tarde", accion: "cerrarDlg" }] });
+    }
+    if (cafeActivo()) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["Ratatoskar: «Los pedidos.»"],
+      botones: [{ texto: "☕ Pasar detrás del mostrador", accion: "rataTurno" }, { texto: "Ahorita no", accion: "cerrarDlg" }] });
+    if (oscarPresente()) {                                            // la conversación infinita: no te incluyen
+      if (ahora - interrupciones.t > 90000) interrupciones.n = 0;
+      interrupciones.n++; interrupciones.t = ahora;
+      if (interrupciones.n >= 3) { interrupciones.n = 0; desbloquearLogro("tercero-discordia");
+        return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Los dos dejan de hablar y te voltean a ver.*", "Ratatoskar: «¿No tienes otra cosa que hacer?»"] }); }
+      unaPalabra();
+      return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*Ratatoskar y Óscar dejan de hablar en cuanto te acercas.*", "Tú: «¿Qué están haciendo?»", "Ratatoskar: «Hablando.»", "*Siguen platicando como si no existieras.*"] });
+    }
+    preguntasRata(["*Ratatoskar está detrás del mostrador.*", "Tú: «Hola, Ratatoskar.»", "Ratatoskar: «Hola.»"]);
+    unaPalabra();
+  }
+  const PREG_RATA = [
+    ["¿Cómo estás?", "Bien."], ["¿Cómo va Creamio?", "Bien."], ["¿Qué haces?", "Nada."], ["¿Has vendido mucho?", "Más o menos."],
+    ["¿Dónde está Óscar?", "No sé, ahorita lo busco."], ["¿Quieres hablar?", "Ahorita no."], ["¿Qué me recomiendas comprar?", "Lo que quieras."],
+    ["¿Necesitas ayuda?", "¿Quieres trabajar?"], ["¿Puedo trabajar otra vez?", "Sí."],
+  ];
+  function preguntasRata(pag) {
+    dialogoPersonaje(el.dlgPersonaje, { ...baseRata(), paginas: pag, botones: PREG_RATA.map(([p], i) => ({ texto: p, accion: "rataPreg", id: String(i) })).concat([{ texto: "Adiós", accion: "cerrarDlg" }]) });
+  }
+  function respuestaRata(i) {
+    const [p, r] = PREG_RATA[i], base = baseRata();
+    if (Math.random() < 0.15) { oscarCiclo = { presente: true, hasta: performance.now() + 60000 };   // Óscar pasa por ahí: se acaba la plática
+      return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: [`Tú: «${p}»`, "*Óscar entra a Creamio.*", "Ratatoskar: «Bueno, voy con Óscar.»", "*Se va a sentar con él.*"] }); }
+    if (!r.includes(" ")) unaPalabra();
+    if (i === 7) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: [`Tú: «${p}»`, `Ratatoskar: «${r}»`], botones: [{ texto: "☕ Trabajar un turno", accion: "rataTurno" }, { texto: "No", accion: "cerrarDlg" }] });
+    if (i === 8) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: [`Tú: «${p}»`, "Ratatoskar: «Sí.»", "Tú: «¿Cuánto me vas a pagar?»", "Ratatoskar: «Lo mismo.»"],
+      botones: [{ texto: `☕ Trabajar un turno ($${PAGO_TURNO})`, accion: "rataTurno" }, { texto: "Mejor no", accion: "cerrarDlg" }] });
+    preguntasRata([`Tú: «${p}»`, `Ratatoskar: «${r}»`]);
+  }
+  function rataEscena1() {                                            // se va con Óscar sin terminar la plática; te quedas quieto 3 s
+    cerrarDlg(el.dlgPersonaje);
+    if (Misiones.disponible("cafeParaLlevar")) Misiones.aceptar("cafeParaLlevar");
+    rataConOscarHasta = performance.now() + 25000;
+    quietoHasta = performance.now() + 3000;
+    setTimeout(() => { avisar("Tú: «Bueno.»"); setTimeout(() => avisar("Objetivo actualizado: encuentra nuevamente a Ratatoskar."), 1600); }, 3000);
+  }
+
+  /* ---------- Minijuego: CREAMIO SIMULATOR (inspirado en Good Coffee, Great Coffee) ----------
+     Lee el pedido, elige el vaso, saca el café de la máquina, agrega lo que lleva y entrégalo antes de que se le acabe
+     la paciencia al cliente. Si sale mal, el cliente te lo regresa y hay que repetirlo. 5 bien = turno terminado. */
+  const RECETAS_CREAMIO = {
+    espresso: { nombre: "espresso", vaso: "taza", lleva: ["cafe"] },
+    americano: { nombre: "café americano", vaso: "taza", lleva: ["cafe", "agua"] },
+    capuchino: { nombre: "capuchino", vaso: "taza", lleva: ["cafe", "lecheCaliente", "espuma"] },
+    helado: { nombre: "café helado", vaso: "plastico", lleva: ["cafe", "lecheFria", "hielo"] },
+    frappe: { nombre: "frappé", vaso: "plastico", lleva: ["cafe", "hieloTriturado", "crema"] },
+  };
+  const INGR_CREAMIO = {
+    cafe: { nombre: "Café (máquina)", ico: "⚙️", col: "#5b3a1e" }, lecheCaliente: { nombre: "Leche caliente", ico: "🥛", col: "#e9d5b5" },
+    espuma: { nombre: "Espuma", ico: "☁️", col: "#fffaf0" }, lecheFria: { nombre: "Leche fría", ico: "🧃", col: "#f1e6d2" },
+    hielo: { nombre: "Hielo", ico: "🧊", col: "#bae6fd" }, hieloTriturado: { nombre: "Hielo triturado", ico: "❄️", col: "#e0f2fe" },
+    crema: { nombre: "Crema batida", ico: "🍦", col: "#ffffff" }, agua: { nombre: "Agua caliente", ico: "💧", col: "#93c5fd" },
+  };
+  const ESPECIALES_CREAMIO = () => [
+    { nombre: "David Pro", ap: NPC_DAVID.apariencia, pide: "capuchino", dice: "«¡BUEEEEGH! ¡TIENEN QUE NERFEAR A STEVE!»" },
+    { nombre: "Franc", ap: NPC_SALA.apariencia, pide: "americano", dice: "«Tengo examen mañana, hermano.»" },
+    { nombre: "Hormiga", ap: NPC_HORMIGA.apariencia, pide: "espresso", dice: "«Tengo que terminar un video para Hércules el Canal.»" },
+    { nombre: "Seguidor del Güero", ap: NPC_PROFETA.apariencia, pide: "capuchino", dice: "«Es una ofrenda para nuestro señor.»" },
+    { nombre: "Chin-Chin", ap: NPC_CHINCHIN.apariencia, pide: "frappe", dice: "«Tengo que terminar un dibujo.»" },
+    { nombre: "Erick Gaming", ap: NPC_ERICK.apariencia, pide: "helado", dice: "«Tengo cosas que hacer en el servidor.»" },
+  ];
+  function abrirCreamioSim() {
+    const dlg = el.dlgPersonaje, enMision = cafeActivo() && !Misiones.objetivoListo("cafeParaLlevar", 1), W = 560, H = 300;
+    dlg.classList.add("ee-dlg--personaje");
+    const botonIngr = Object.entries(INGR_CREAMIO).map(([k, v]) => `<button type="button" class="ee-btn ee-cs-b" data-ing="${k}">${v.ico} ${esc(v.nombre)}</button>`).join("");
+    dlg.innerHTML = `<div class="ee-personaje">
+      <div class="ee-personaje-cab"><h2 id="eePersTit">☕ Creamio Simulator</h2><span class="ee-ed-reloj" data-cuenta>0/${CLIENTES_TURNO}</span><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
+      <div class="ee-dg-cuerpo">
+        <div class="ee-dg-marco" style="position:relative">
+          <canvas class="ee-dg-lienzo" width="${W}" height="${H}" aria-label="El mostrador de Creamio" style="width:100%;height:auto;max-width:${W}px"></canvas>
+          <div class="ee-dg-intro" data-hoja hidden style="overflow:auto">
+            <p class="ee-dg-titulo" style="color:#7c4a2d">📄 INSTRUCCIONES (pegadas junto a la máquina)</p>
+            ${Object.values(RECETAS_CREAMIO).map(r => `<p class="ee-dg-regla" style="text-align:left"><b>${esc(r.nombre[0].toUpperCase() + r.nombre.slice(1))}</b>: ${r.vaso === "taza" ? "☕ taza" : "🥤 vaso de plástico"} + ${r.lleva.map(i => esc(INGR_CREAMIO[i].nombre.replace(" (máquina)", ""))).join(" + ")}</p>`).join("")}
+            <button type="button" class="ee-btn" data-cerrarhoja>Entendido</button>
+          </div>
+          <div class="ee-dg-intro" data-escena hidden><p class="ee-dg-regla" data-escenatxt style="font-size:16px"></p><button type="button" class="ee-btn" data-escenasig>Siguiente ›</button></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px">
+          <button type="button" class="ee-btn ee-cs-b" data-vaso="taza">☕ Taza</button><button type="button" class="ee-btn ee-cs-b" data-vaso="plastico">🥤 Vaso de plástico</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px">${botonIngr}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px">
+          <button type="button" class="ee-btn" data-tirar>🗑️ Tirar</button><button type="button" class="ee-btn" data-hojabtn>📄 Instrucciones</button>
+          <button type="button" class="ee-btn" data-ayuda>🙋 Pedirle ayuda a Ratatoskar</button><button type="button" class="ee-btn" data-entregar style="background:#16a34a;color:#fff">✅ Entregar</button>
+        </div>
+        <p class="ee-juego-msj" data-msj role="status" aria-live="polite">Lee el pedido del cliente.</p>
+      </div>
+    </div>`;
+    const q = s => dlg.querySelector(s), lienzo = q("canvas"), g = lienzo.getContext("2d"), msj = q("[data-msj]");
+    const mensaje = (t, cl) => { msj.textContent = t; msj.className = "ee-juego-msj " + (cl || ""); };
+    let atendidos = 0, cliente = null, vaso = null, lleva = [], sirviendo = 0, anim = 0, fin = false, pausa = false, ultimoT = performance.now(), rataSeFue = false, ayudas = 0, nCliente = 0, oscarVino = false;
+    const corte = new AbortController(), sig = { signal: corte.signal };
+    const especiales = ESPECIALES_CREAMIO();
+    function nuevoCliente() {
+      nCliente++; vaso = null; lleva = []; sirviendo = 0;
+      const tipos = Object.keys(RECETAS_CREAMIO);
+      if (!enMision && !oscarVino && nCliente > 1 && Math.random() < 0.12) { oscarVino = true; cliente = { nombre: "Óscar", ap: AP_OSCAR, pide: tipos[Math.floor(Math.random() * tipos.length)], pac: 1, oscar: true };
+        mensaje("Óscar: «Lo de siempre.»"); setTimeout(() => escena(["Ratatoskar: «Ese lo atiendo yo.»", "Tú: «Pero estoy preparando su pedido.»", "Ratatoskar: «Déjalo.»",
+          "*Ratatoskar le prepara la bebida a Óscar y se sienta con él.* (No cuenta para tu turno.)"], () => nuevoCliente()), 900); return; }
+      const esp = !enMision && Math.random() < 0.4 ? especiales[Math.floor(Math.random() * especiales.length)] : null;
+      if (esp) cliente = { nombre: esp.nombre, ap: esp.ap, pide: esp.pide, pac: 1, dice: esp.dice };
+      else { const ap = avatarAleatorio(Math.floor(Math.random() * 99999)); cliente = { nombre: "Cliente #" + (atendidos + 1), ap, pide: tipos[Math.floor(Math.random() * tipos.length)], pac: 1 }; }
+      cliente.dura = enMision ? 34 : 28;
+      mensaje(`${cliente.nombre}: «Quiero un ${RECETAS_CREAMIO[cliente.pide].nombre}.»${cliente.dice ? " " + cliente.dice : ""}`);
+    }
+    function escena(lineas, alFin) {                                  // cinemática dentro del minijuego (la paciencia se pausa)
+      pausa = true; let i = 0; const caja = q("[data-escena]"), txt = q("[data-escenatxt]");
+      const mostrar = () => { txt.textContent = lineas[i]; };
+      caja.hidden = false; mostrar();
+      q("[data-escenasig]").onclick = () => { i++; if (i < lineas.length) return mostrar(); caja.hidden = true; pausa = false; ultimoT = performance.now(); if (alFin) alFin(); };
+    }
+    const tirar = (t) => { vaso = null; lleva = []; sirviendo = 0; if (t) mensaje(t); };
+    q("[data-cerrarhoja]").addEventListener("click", () => { q("[data-hoja]").hidden = true; pausa = false; ultimoT = performance.now(); }, sig);
+    q("[data-hojabtn]").addEventListener("click", () => { q("[data-hoja]").hidden = false; pausa = true; }, sig);
+    q("[data-tirar]").addEventListener("click", () => tirar("Tiraste la bebida. Empieza otra vez."), sig);
+    q("[data-ayuda]").addEventListener("click", () => {
+      if (!rataSeFue) { mensaje("Tú: «¿Cómo se hace esto?» · Ratatoskar: «Lee las instrucciones.»"); unaPalabra(); return; }
+      const r = [["Tú: «Ratatoskar, necesito ayuda.»", "Ratatoskar: «Estoy hablando con Óscar.»"], ["Tú: «Pero hay clientes esperando.»", "Ratatoskar: «Pues atiéndelos.»"], ["Tú: «¿No vas a regresar?»", "Ratatoskar: «Ahorita.»"]][Math.min(2, ayudas++)];
+      mensaje(r.join(" · ")); if (ayudas === 3) unaPalabra();
+    }, sig);
+    dlg.querySelectorAll("[data-vaso]").forEach(b => b.addEventListener("click", () => {
+      if (pausa || !cliente || cliente.oscar) return;
+      if (vaso) return mensaje("Ya tienes un vaso. Tíralo si te equivocaste.");
+      vaso = b.dataset.vaso; mensaje(vaso === "taza" ? "Pusiste una taza." : "Pusiste un vaso de plástico.");
+    }, sig));
+    dlg.querySelectorAll("[data-ing]").forEach(b => b.addEventListener("click", () => {
+      if (pausa || !cliente || cliente.oscar) return;
+      const k = b.dataset.ing;
+      if (!vaso) return mensaje("Primero elige el vaso.", "ee-juego-msj--fallo");
+      if (lleva.includes(k)) return mensaje(`Ya le pusiste ${INGR_CREAMIO[k].nombre.toLowerCase()}.`);
+      if (sirviendo) return mensaje("Espera a que termine la máquina.");
+      if (k === "cafe") { sirviendo = performance.now(); mensaje("⚙️ La máquina está sacando el café…"); setTimeout(() => { if (sirviendo) { lleva.push("cafe"); sirviendo = 0; mensaje("Café listo."); } }, 1100); return; }
+      lleva.push(k); mensaje(`Agregaste ${INGR_CREAMIO[k].nombre.toLowerCase()}.`);
+    }, sig));
+    q("[data-entregar]").addEventListener("click", () => {
+      if (pausa || !cliente || cliente.oscar) return;
+      if (!vaso) return mensaje("No hay nada que entregar.");
+      const r = RECETAS_CREAMIO[cliente.pide], ok = vaso === r.vaso && lleva.length === r.lleva.length && r.lleva.every(i => lleva.includes(i));
+      if (!ok) { contarLogro("creamio-mal", 5, "agua-calcetin"); tirar(`${cliente.nombre}: «Hermano, yo pedí un ${r.nombre}, no agua de calcetín.» (Repítelo.)`); msj.className = "ee-juego-msj ee-juego-msj--fallo"; lienzo.classList.remove("ee-dg-sacude"); void lienzo.offsetWidth; lienzo.classList.add("ee-dg-sacude"); return; }
+      atendidos++; contarLogro("creamio-bien", 50, "barista-pro"); q("[data-cuenta]").textContent = `${atendidos}/${CLIENTES_TURNO}`;
+      mensaje(`${cliente.nombre}: «Gracias.» ✔`, "ee-juego-msj--ok"); cliente = null;
+      if (atendidos >= CLIENTES_TURNO) return terminar();
+      if (enMision && atendidos === 3 && !rataSeFue) {                // 4. La llegada de Óscar
+        return setTimeout(() => escena(["*Óscar entra a Creamio.*", "Ratatoskar: «Ah, llegó Óscar.»", "Tú: «¿Me ayudas con los pedidos que faltan?»", "Ratatoskar: «Tú sigue atendiendo.»",
+          "Tú: «¿A dónde vas?»", "Ratatoskar: «Con Óscar.»", "*Ratatoskar se sienta con Óscar y se pone a platicar. Te quedas solo con los clientes que faltan.*"], () => { rataSeFue = true; nuevoCliente(); }), 700);
+      }
+      setTimeout(nuevoCliente, 900);
+    }, sig);
+    function terminar() {
+      fin = true; pausa = true; contarLogro("creamio-turnos", 10, "explotacion-laboral");
+      if (enMision) {
+        if (Misiones.esperando("rata-turno")) Misiones.hablo("rata-turno"); Misiones._pendiente = null;
+        mensaje("¡Turno terminado! Ve a cobrarle a Ratatoskar… está sentada con Óscar.", "ee-juego-msj--ok");
+      } else { saldo += PAGO_TURNO; guardarSaldo(); mensaje(`¡Turno terminado! +$${PAGO_TURNO}. (Ratatoskar ni volteó.)`, "ee-juego-msj--ok"); }
+      setTimeout(() => { if (dlg.open) { corte.abort(); cancelAnimationFrame(anim); cerrarDlg(dlg); } }, 2200);
+    }
+    // --- Dibujo
+    function dibujar(t) {
+      if (!dlg.open) { corte.abort(); return; }
+      const dt = Math.min(0.1, (t - ultimoT) / 1000); ultimoT = t;
+      if (cliente && !pausa && !fin && !cliente.oscar) {
+        cliente.pac -= dt / cliente.dura;
+        if (cliente.pac <= 0) { mensaje(`${cliente.nombre}: «Ya me voy. Esto es una tortura.» (No contó.)`, "ee-juego-msj--fallo"); cliente = null; tirar(); setTimeout(nuevoCliente, 1100); }
+      }
+      g.clearRect(0, 0, W, H);
+      g.fillStyle = "#f6e7d0"; g.fillRect(0, 0, W, H);                       // pared
+      g.fillStyle = "#e7a6c0"; g.fillRect(0, 0, W, 26); g.fillStyle = "#7c4a2d"; g.font = "900 16px system-ui"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("CREAMIO · café · capuchinos · frappés", W / 2, 13);
+      for (let x = 0; x < W; x += 40) { g.fillStyle = x % 80 ? "rgba(124,74,45,.06)" : "rgba(124,74,45,.1)"; g.fillRect(x, 26, 20, 150); }
+      // la mesita del fondo: Ratatoskar y Óscar (cuando ya se fue con él)
+      if (rataSeFue || (!enMision && oscarVino)) {
+        g.fillStyle = "#c08a5a"; g.beginPath(); g.ellipse(470, 132, 40, 12, 0, 0, TAU); g.fill();
+        dibujarAvatar(g, AP_RATA, { x: 438, y: 140, dir: "right", sentado: true, esc: 0.9 }); dibujarAvatar(g, AP_OSCAR, { x: 502, y: 140, dir: "left", sentado: true, esc: 0.9 });
+        if (Math.floor(t / 900) % 2) { g.fillStyle = "#fff"; g.beginPath(); g.ellipse(470, 76, 26, 11, 0, 0, TAU); g.fill(); g.fillStyle = "#334155"; g.font = "700 11px system-ui"; g.fillText("bla bla bla", 470, 77); }
+      } else dibujarAvatar(g, AP_RATA, { x: 500, y: 178, dir: "left", esc: 1.25 });   // Ratatoskar "supervisando"
+      // el cliente
+      if (cliente) {
+        dibujarAvatar(g, cliente.ap, { x: 110, y: 188, dir: "down", esc: 2.2 });
+        const bw = 150, pc = Math.max(0, cliente.pac); g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(35, 30, bw, 10);
+        g.fillStyle = pc > 0.5 ? "#22c55e" : pc > 0.25 ? "#f59e0b" : "#ef4444"; g.fillRect(35, 30, bw * pc, 10);
+        g.fillStyle = "#1f2937"; g.font = "700 11px system-ui"; g.textAlign = "left"; g.fillText(cliente.oscar ? "Óscar (lo atiende Ratatoskar)" : `${cliente.nombre} · paciencia`, 35, 50);
+        g.fillStyle = "#fff"; rr(g, 190, 40, 170, 40, 10, "#fff"); g.fillStyle = "#1f2937"; g.font = "800 14px system-ui"; g.textAlign = "center";
+        g.fillText(cliente.oscar ? "«Lo de siempre.»" : `«Un ${RECETAS_CREAMIO[cliente.pide].nombre}»`, 275, 60);
+      }
+      // el mostrador
+      g.fillStyle = "#b07a4e"; g.fillRect(0, 176, W, 20); g.fillStyle = "#8b5a35"; g.fillRect(0, 196, W, H - 196);
+      // la máquina de café
+      g.fillStyle = "#475569"; g.fillRect(250, 96, 74, 84); g.fillStyle = "#1e293b"; g.fillRect(262, 108, 50, 22); g.fillStyle = sirviendo ? "#ef4444" : "#22c55e"; g.beginPath(); g.arc(302, 119, 4, 0, TAU); g.fill();
+      g.fillStyle = "#334155"; g.fillRect(278, 130, 18, 10);
+      if (sirviendo) { g.fillStyle = "#5b3a1e"; g.fillRect(285, 140, 4, 34 + Math.sin(t / 60) * 2); }
+      // la hoja de instrucciones
+      g.save(); g.translate(352, 112); g.rotate(0.06); g.fillStyle = "#fffbeb"; g.fillRect(0, 0, 54, 62); g.fillStyle = "#94a3b8"; for (let k = 0; k < 6; k++) g.fillRect(6, 10 + k * 8, 40 - (k % 3) * 8, 2); g.fillStyle = "#ef4444"; g.fillRect(22, -3, 10, 6); g.restore();
+      // el vaso que estás preparando
+      if (vaso) {
+        const x = 287, base = 236, taza = vaso === "taza", w = taza ? 58 : 50, h = taza ? 44 : 70, top = base - h;
+        g.fillStyle = "rgba(0,0,0,.2)"; g.beginPath(); g.ellipse(x, base + 4, w * 0.7, 7, 0, 0, TAU); g.fill();
+        const capas = lleva.filter(k => !["espuma", "crema", "hielo"].includes(k));
+        capas.forEach((k, i) => { const ch = (h - 8) / Math.max(3, capas.length) * 1.0; g.fillStyle = INGR_CREAMIO[k].col; g.fillRect(x - w / 2 + 4, base - 4 - ch * (i + 1), w - 8, ch); });
+        if (lleva.includes("hielo")) for (let k = 0; k < 5; k++) { g.fillStyle = "rgba(224,242,254,.9)"; g.strokeStyle = "#7dd3fc"; g.fillRect(x - 18 + (k % 3) * 13, base - 22 - Math.floor(k / 3) * 14, 11, 11); g.strokeRect(x - 18 + (k % 3) * 13, base - 22 - Math.floor(k / 3) * 14, 11, 11); }
+        if (lleva.includes("espuma")) { g.fillStyle = "#fffaf0"; g.beginPath(); g.ellipse(x, top + 6, w / 2 - 2, 8, 0, 0, TAU); g.fill(); }
+        if (lleva.includes("crema")) { g.fillStyle = "#fff"; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(x, top - 2 - k * 6, 16 - k * 3.5, 0, TAU); g.fill(); } g.fillStyle = "#7c4a2d"; g.fillRect(x - 1, top - 30, 2, 8); }
+        g.strokeStyle = "#334155"; g.lineWidth = 3; g.strokeRect(x - w / 2, top, w, h);
+        if (taza) { g.beginPath(); g.arc(x + w / 2 + 6, top + h / 2, 10, -Math.PI / 2, Math.PI / 2); g.stroke(); }
+        else { g.fillStyle = "#e7a6c0"; g.fillRect(x - w / 2, top + h * 0.45, w, 10); g.strokeStyle = "#f43f5e"; g.beginPath(); g.moveTo(x + 8, top - 4); g.lineTo(x + 16, top - 26); g.stroke(); }
+        g.fillStyle = "#1f2937"; g.font = "700 11px system-ui"; g.textAlign = "center"; g.fillText(lleva.map(k => INGR_CREAMIO[k].ico).join(" ") || "(vacío)", x, base + 22);
+      } else { g.fillStyle = "rgba(255,255,255,.5)"; g.font = "700 12px system-ui"; g.textAlign = "center"; g.fillText("(elige un vaso)", 287, 222); }
+      anim = requestAnimationFrame(dibujar);
+    }
+    if (!enMision) mensaje("Otro turno en Creamio. Ratatoskar: «Ahí están las instrucciones.»");
+    nuevoCliente();
+    anim = requestAnimationFrame(dibujar);
+    abrirDlg(dlg);
+  }
+
+  NPC_RATA.alHablar = hablarRata;
+  NPC_OSCAR.alHablar = () => oscarPresente() && cafeHecho() ? hablarRata() : dialogoPersonaje(el.dlgPersonaje, { nombre: "Óscar", apariencia: AP_OSCAR, idTitulo: "eePersTit",
+    paginas: ["Óscar: «¿Qué onda?»", "*Óscar voltea a ver a Ratatoskar. Ratatoskar ya lo está viendo.*"] });
+
+  /* ---------------- EL ARCHIVO DE DAVID PRO · versión completa ----------------
+     1) Distracción: le enseñas los objetos raros y se va CORRIENDO al baño (cinemática: la cámara lo sigue).
+     2) Hackeo: para entrar a su compu tienes que poner 4 cosas, cada una con su minijuego, antes de que regrese:
+        el Modem (conectar cables), el server de Minecraft de Richie (minar bloques sin tocar creepers),
+        el Peine de Rexi (peinar la estática de la pantalla) y el Expediente de Hora Vive (la contraseña).
+     3) Entras al plano espiritual. */
+  const PIEZAS_DAVID = [
+    { id: "modem", nombre: "Modem FiberHome HG6145F", ico: "📶", donde: "Cómpralo en la mesita de JP ($2000)" },
+    { id: "acceso-minecraft", nombre: "Server de Minecraft de Richie", ico: "⛏️", donde: "Misión «Operación Cubitos»" },
+    { id: "peine-rexi", nombre: "Peine de Rexi", ico: "🪮", donde: "Misión «¡A Rexi le falta un corte!»" },
+    { id: "expediente-hv", nombre: "Expediente de Hora Vive", ico: "🗂️", donde: "Misión «El Mata Bebés»" },
+  ];
+  const HACKEO_SEG = 120;                                             // ►► segundos antes de que David regrese del baño
+  let camObjetivo = null, cineDavid = null;
+  // --- La cinemática: David se levanta, grita y se va corriendo al baño
+  function iniciarCineDavid() {
+    const ini = [DAVID_MESA[0] + 0.65, DAVID_MESA[1] + 1.3], salida = [DAVID_MESA[0] + 0.65, DAVID_MESA[1] + 2.3];
+    const ruta2 = buscarRuta(salida[0], salida[1], NPC_BANOS.x, NPC_BANOS.y - 1.5);
+    const puntos = [ini, salida, ...(ruta2.length ? ruta2 : [[NPC_BANOS.x, NPC_BANOS.y - 1.5]])];
+    cineDavid = { t0: performance.now(), puntos, seg: 0, x: ini[0], y: ini[1], dir: "down", paso: 0, polvo: [], llego: 0, fase: "levanta" };
+    quietoHasta = performance.now() + 60000; ruta = [];
+    temblorEvento = 6; sonidoTono(330, 0.12);
+  }
+  function actualizarCineDavid(dt) {
+    const cd = cineDavid; if (!cd) return;
+    const ahora = performance.now(), e = (ahora - cd.t0) / 1000;
+    if (cd.fase === "levanta") {
+      camObjetivo = [cd.x, cd.y];
+      if (e > 0.6 && !cd.grito) { cd.grito = true; temblorEvento = 26; [880, 1100, 1320, 990, 1500].forEach((f, k) => setTimeout(() => sonidoTono(f, 0.16), k * 110)); }
+      if (e > 1.5) cd.fase = "corre";
+      return;
+    }
+    if (cd.fase === "corre") {
+      let paso = 9.5 * dt;
+      while (paso > 0 && cd.seg < cd.puntos.length - 1) {
+        const [bx, by] = cd.puntos[cd.seg + 1], dx = bx - cd.x, dy = by - cd.y, d = Math.hypot(dx, dy);
+        if (d <= paso) { cd.x = bx; cd.y = by; paso -= d; cd.seg++; continue; }
+        cd.x += dx / d * paso; cd.y += dy / d * paso; cd.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "up" : "down"); paso = 0;
+      }
+      cd.paso += dt * 22;
+      if (Math.random() < 0.6) cd.polvo.push({ x: cd.x + (Math.random() - 0.5) * 0.5, y: cd.y + 0.2, t0: ahora });
+      camObjetivo = [cd.x, cd.y];
+      if (cd.seg >= cd.puntos.length - 1) { cd.fase = "puerta"; cd.llego = ahora; temblorEvento = 18; try { sonidoExplosion(false); } catch (er) {} }
+      return;
+    }
+    if (cd.fase === "puerta") {
+      if (ahora - cd.llego > 1300) { cd.fase = "regresa"; cd.reg = ahora; camObjetivo = [jug.x, jug.y]; }
+      return;
+    }
+    if (cd.fase === "regresa" && ahora - cd.reg > 900) {
+      cineDavid = null; camObjetivo = null; quietoHasta = 0;
+      Misiones.hablo("david-distraer"); const p = Misiones._pendiente || []; Misiones._pendiente = null;
+      dialogoPersonaje(el.dlgPersonaje, { nombre: "Salón", icono: "💻", idTitulo: "eePersTit", paginas: p });
+    }
+  }
+  function dibujarCineDavid(dyn) {
+    const cd = cineDavid; if (!cd) return;
+    const ahora = performance.now(), e = (ahora - cd.t0) / 1000;
+    cd.polvo = cd.polvo.filter(p => ahora - p.t0 < 700);
+    cd.polvo.forEach(p => dyn.push({ k: p.x + p.y - 0.1, h: 0, fn: () => { const q = (ahora - p.t0) / 700, [px, py] = P(p.x, p.y, 0.1 + q * 0.4);
+      c.save(); c.globalAlpha = 0.55 * (1 - q); c.fillStyle = "#d6d3d1"; c.beginPath(); c.arc(px, py, 5 + q * 12, 0, TAU); c.fill(); c.restore(); } }));
+    if (cd.fase === "regresa") return;
+    dyn.push({ k: cd.x + cd.y + 0.05, h: 99, fn: () => {
+      const [px, py] = P(cd.x, cd.y, 0), corre = cd.fase === "corre";
+      if (cd.fase !== "puerta") {
+        const tiembla = cd.fase === "levanta" && e > 0.6 ? (Math.random() - 0.5) * 6 : 0;
+        dibujarAvatar(c, NPC_DAVID.apariencia, { x: px + tiembla, y: py, dir: corre ? cd.dir : "down", mov: corre, paso: cd.paso, esc: 1.05 });
+        c.strokeStyle = "rgba(132,204,22,.8)"; c.lineWidth = 2;                       // el olor de los objetos lo persigue
+        for (let k = 0; k < 3; k++) { const f = (ahora / 500 + k / 3) % 1; c.globalAlpha = 1 - f; c.beginPath();
+          for (let s2 = 0; s2 <= 8; s2++) { const xx = px - 16 + k * 16 + Math.sin(s2 + ahora / 90) * 3, yy = py - 50 - s2 * 3 - f * 16; s2 ? c.lineTo(xx, yy) : c.moveTo(xx, yy); } c.stroke(); }
+        c.globalAlpha = 1;
+      }
+      const burbuja = (txt, tam, y) => { c.font = `900 ${tam}px system-ui`; const w = c.measureText(txt).width + 18; rr(c, px - w / 2, y - tam, w, tam + 12, 10, "#fff");
+        c.strokeStyle = "#7c3aed"; c.lineWidth = 2; c.strokeRect(px - w / 2 + 2, y - tam + 2, w - 4, tam + 8); c.fillStyle = "#4c1d95"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, px, y - tam / 2 + 6); };
+      if (cd.fase === "levanta") burbuja(e < 0.6 ? "…" : "¡IIIIIIEEEEEEUUUUUUU!", e < 0.6 ? 16 : 24, py - 78);
+      else if (corre && Math.floor(ahora / 300) % 3 !== 0) burbuja("¡IIIEEEUUU!", 14, py - 72);
+      else if (cd.fase === "puerta") { const q = (ahora - cd.llego) / 1300; c.save(); c.globalAlpha = 1 - q * 0.6; burbuja("💥 *PUM*", 22, py - 40 - q * 20); c.restore(); }
+    } });
+  }
+  NPC_DAVID.visible = (v => () => (!v || v()) && !cineDavid)(NPC_DAVID.visible);
+
+  // --- El hackeo de la compu (minijuego en 4 partes)
+  const faltanPiezas = () => PIEZAS_DAVID.filter(p => !inventario.misiones.includes(p.id));
+  function hackearCompuDavid() {
+    const base = { nombre: "Computadora de David Pro", icono: "💻", idTitulo: "eePersTit" }, falta = faltanPiezas();
+    if (falta.length) return dialogoPersonaje(el.dlgPersonaje, { ...base, paginas: ["*La laptop está bloqueada. Una ventana morada dice: «CONEXIÓN NO AUTORIZADA».*",
+      ["Para entrar necesitas poner 4 cosas. Te falta:", ...falta.map(p => `• ${p.ico} ${p.nombre} — ${p.donde}`)], "(David sigue en el baño… por ahora.)"] });
+    const dlg = el.dlgPersonaje, W = 560, H = 320;
+    dlg.classList.add("ee-dlg--personaje");
+    dlg.innerHTML = `<div class="ee-personaje">
+      <div class="ee-personaje-cab"><h2 id="eePersTit">💻 Entrar a la compu de David Pro</h2><span class="ee-ed-reloj" data-reloj>${HACKEO_SEG}</span><button type="button" class="ee-cerrar" data-a="cerrarDlg" aria-label="Cerrar">&times;</button></div>
+      <div class="ee-ed-tiempo" aria-hidden="true"><i data-barra></i></div>
+      <div class="ee-dg-cuerpo">
+        <p class="ee-ed-paso" data-paso></p>
+        <div class="ee-dg-marco"><canvas class="ee-dg-lienzo" width="${W}" height="${H}" aria-label="La pantalla de David Pro" style="width:100%;height:auto;max-width:${W}px;touch-action:none"></canvas></div>
+        <div class="ee-ed-opciones" data-ops style="margin-top:8px"></div>
+        <p class="ee-juego-msj" data-msj role="status" aria-live="polite"></p>
+      </div>
+    </div>`;
+    const q = s => dlg.querySelector(s), lienzo = q("canvas"), g = lienzo.getContext("2d"), msj = q("[data-msj]"), ops = q("[data-ops]");
+    const mensaje = (t, cl) => { msj.textContent = t; msj.className = "ee-juego-msj " + (cl || ""); };
+    const corte = new AbortController(), sig = { signal: corte.signal };
+    let etapa = -1, restante = HACKEO_SEG, ultimoT = performance.now(), anim = 0, fin = false, pone = 0, est = {}, raton = null, peinando = false, castigoT = 0;
+    const punto = ev => { const r = lienzo.getBoundingClientRect(); return [(ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height]; };
+    const castigo = (s, txt) => { restante -= s; castigoT = performance.now(); mensaje(txt, "ee-juego-msj--fallo"); lienzo.classList.remove("ee-dg-sacude"); void lienzo.offsetWidth; lienzo.classList.add("ee-dg-sacude"); };
+    const TEXTOS = [
+      "1/4 · Pones el MODEM. Conecta cada cable de color a su puerto (clic en el cable y luego en su puerto).",
+      "2/4 · Subes el SERVER DE RICHIE. Mina los bloques (3 clics cada uno)… ¡pero NO le piques a los creepers!",
+      "3/4 · Sacas el PEINE DE REXI. La pantalla está llena de estática peluda: mantén presionado y péinala toda.",
+      "4/4 · Abres el EXPEDIENTE DE HORA VIVE. La compu pide contraseña. La pista está en la última hoja.",
+    ];
+    function empezarEtapa(i) {
+      etapa = i; pone = performance.now(); ops.innerHTML = ""; q("[data-paso]").textContent = TEXTOS[i];
+      mensaje(`Pones ${PIEZAS_DAVID[i].ico} ${PIEZAS_DAVID[i].nombre}…`);
+      if (i === 0) { const cols = ["#ef4444", "#3b82f6", "#facc15", "#22c55e"], puertos = cols.slice().sort(() => Math.random() - 0.5);
+        est = { cables: cols.map((col, k) => ({ col, x: 70, y: 70 + k * 58, hecho: false })), puertos: puertos.map((col, k) => ({ col, x: 490, y: 70 + k * 58 })), sel: null }; }
+      if (i === 1) { const creepers = new Set(); while (creepers.size < 3) creepers.add(Math.floor(Math.random() * 12));
+        est = { bloques: Array.from({ length: 12 }, (_, k) => ({ x: 110 + (k % 4) * 90, y: 60 + Math.floor(k / 4) * 80, golpes: 0, creeper: creepers.has(k), roto: false, tipo: Math.random() < 0.5 ? "tierra" : "piedra" })) }; }
+      if (i === 2) { const rnd = azar(99); est = { pelos: Array.from({ length: 170 }, () => ({ x: 60 + rnd() * 440, y: 40 + rnd() * 240, a: rnd() * 6.28, l: 6 + rnd() * 10, ok: false })) }; }
+      if (i === 3) {
+        ops.innerHTML = ["HORAVIVE", "MARIOKART", "PRIMOGENITO", "STEVE", "GUERO"].sort(() => Math.random() - 0.5).map(p => `<button type="button" class="ee-ed-op" data-pass="${p}">${p}</button>`).join("");
+        ops.querySelectorAll("[data-pass]").forEach(b => b.addEventListener("click", () => {
+          if (fin) return;
+          if (b.dataset.pass === "PRIMOGENITO") { ops.innerHTML = ""; ganar(); }
+          else { b.disabled = true; castigo(10, `«${b.dataset.pass}»: CONTRASEÑA INCORRECTA. −10 s`); }
+        }, sig));
+      }
+    }
+    const siguiente = () => { if (est.listo) return; est.listo = true; const sig2 = etapa + 1; if (sig2 <= 3) setTimeout(() => !fin && empezarEtapa(sig2), 700); };
+    function ganar() {
+      fin = true; mensaje("✔ ACCESO CONCEDIDO", "ee-juego-msj--ok"); q("[data-paso]").textContent = "La pantalla se pone morada. Algo respira del otro lado.";
+      setTimeout(() => { if (!dlg.open) return; corte.abort(); cancelAnimationFrame(anim);
+        Misiones.hablo("compu-hackeo"); Misiones._pendiente = null;
+        dialogoPersonaje(dlg, { ...base, paginas: ["*El modem parpadea. El server de Richie zumba. El peine quedó pegado a la pantalla por la estática.*",
+          "*La contraseña PRIMOGENITO desbloquea un solo archivo:*", "«ARCHIVO: david_pro_alma.exe»", "*La pantalla ya no muestra Mario Kart. Muestra algo que respira.*", "*Sientes que te jala hacia adentro…*"],
+          botones: [{ texto: "🌀 Entrar a la computadora", accion: "davidEntrar" }] }); }, 1500);
+    }
+    function perder() {
+      fin = true; corte.abort(); cancelAnimationFrame(anim);
+      const st = Misiones.estado.activas.archivoDavid; if (st) { st.p = []; Misiones.guardar(); }   // hay que distraerlo otra vez
+      dialogoPersonaje(dlg, { nombre: "David Pro", apariencia: NPC_DAVID.apariencia, idTitulo: "eePersTit",
+        paginas: ["*Se escucha la puerta del baño. Pasos.*", "David Pro: «…¿QUÉ HACES EN MI COMPU?»", "*Cierra la laptop de golpe y se vuelve a sentar.*", "David Pro: «iiiiiieeeeeeeuuuu. Lárgate.»",
+          "(Se te acabó el tiempo. Distráelo otra vez y vuelve a intentarlo.)"] });
+    }
+    lienzo.addEventListener("pointerdown", ev => {
+      if (fin || est.listo || performance.now() - pone < 700) return;
+      const [x, y] = punto(ev); raton = [x, y];
+      if (etapa === 0) {
+        const cab = est.cables.find(k => !k.hecho && Math.hypot(k.x - x, k.y - y) < 24);
+        if (cab) { est.sel = cab; return; }
+        const pu = est.puertos.find(k => Math.hypot(k.x - x, k.y - y) < 24);
+        if (pu && est.sel) {
+          if (pu.col === est.sel.col) { est.sel.hecho = true; est.sel.destino = pu; est.sel = null; sonidoTono(660, 0.06);
+            if (est.cables.every(k => k.hecho)) { mensaje("📶 Modem conectado.", "ee-juego-msj--ok"); siguiente(); } }
+          else { est.sel = null; castigo(4, "¡Chispazo! Ese no era su puerto. −4 s"); }
+        }
+      }
+      if (etapa === 1) {
+        const bl = est.bloques.find(b => !b.roto && x > b.x - 36 && x < b.x + 36 && y > b.y - 34 && y < b.y + 34);
+        if (!bl) return;
+        if (bl.creeper) { bl.roto = true; castigo(8, "💥 ¡SSSSS… BOOM! Le picaste a un creeper. −8 s"); try { sonidoExplosion(false); } catch (e) {} return; }
+        bl.golpes++; sonidoTono(bl.tipo === "piedra" ? 220 : 160, 0.05);
+        if (bl.golpes >= 3) { bl.roto = true;
+          if (est.bloques.filter(b => !b.creeper).every(b => b.roto)) { mensaje("⛏️ Server de Richie: ONLINE.", "ee-juego-msj--ok"); siguiente(); } }
+      }
+      if (etapa === 2) { peinando = true; try { lienzo.setPointerCapture(ev.pointerId); } catch (e) {} }
+    }, sig);
+    lienzo.addEventListener("pointermove", ev => {
+      raton = punto(ev);
+      if (etapa !== 2 || !peinando || fin || est.listo) return;
+      const [x, y] = raton; est.pelos.forEach(p => { if (!p.ok && Math.abs(p.x - x) < 34 && Math.abs(p.y - y) < 14) p.ok = true; });
+      const hechos = est.pelos.filter(p => p.ok).length / est.pelos.length;
+      if (hechos >= 0.93) { est.pelos.forEach(p => { p.ok = true; }); peinando = false; mensaje("🪮 Pantalla peinadita.", "ee-juego-msj--ok"); siguiente(); }
+    }, sig);
+    ["pointerup", "pointercancel"].forEach(t => lienzo.addEventListener(t, () => { peinando = false; }, sig));
+    function dibujar(t) {
+      if (!dlg.open) { corte.abort(); return; }
+      const dt = Math.min(0.1, (t - ultimoT) / 1000); ultimoT = t;
+      if (!fin && etapa >= 0) { restante -= dt; if (restante <= 0) { restante = 0; return perder(); } }
+      q("[data-reloj]").textContent = Math.ceil(restante); q("[data-barra]").style.width = (restante / HACKEO_SEG * 100) + "%";
+      g.fillStyle = "#0b0a12"; g.fillRect(0, 0, W, H);
+      const colocando = performance.now() - pone < 700, ahora = performance.now();
+      g.fillStyle = "rgba(124,58,237,.12)"; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1);           // líneas de pantalla
+      if (etapa === 0) {
+        g.fillStyle = "#1f2937"; rr(g, 20, 30, 110, 260, 12, "#1f2937"); g.fillStyle = "#e5e7eb"; g.font = "800 12px system-ui"; g.textAlign = "center"; g.fillText("MODEM FiberHome", 75, 46);
+        g.fillStyle = "#111827"; rr(g, 440, 30, 100, 260, 12, "#111827"); g.fillStyle = "#c4b5fd"; g.fillText("LAPTOP DE DAVID", 490, 46);
+        est.puertos.forEach(p => { g.fillStyle = "#000"; g.fillRect(p.x - 16, p.y - 12, 32, 24); g.strokeStyle = p.col; g.lineWidth = 3; g.strokeRect(p.x - 16, p.y - 12, 32, 24); });
+        est.cables.forEach(k => {
+          g.strokeStyle = k.col; g.lineWidth = 6; g.lineCap = "round";
+          const fx = k.hecho ? k.destino.x : est.sel === k && raton ? raton[0] : k.x + 30, fy = k.hecho ? k.destino.y : est.sel === k && raton ? raton[1] : k.y;
+          g.beginPath(); g.moveTo(k.x, k.y); g.bezierCurveTo(k.x + 120, k.y, fx - 120, fy, fx, fy); g.stroke();
+          g.fillStyle = k.col; g.beginPath(); g.arc(k.x, k.y, est.sel === k ? 14 : 11, 0, TAU); g.fill();
+        });
+      }
+      if (etapa === 1) {
+        g.fillStyle = "#38bdf8"; g.fillRect(0, 0, W, 30); g.fillStyle = "#e5e7eb"; g.font = "800 13px monospace"; g.textAlign = "left"; g.fillText("RichieCraft · server · conectando…", 10, 20);
+        est.bloques.forEach(b => { if (b.roto) return; const s = 64;
+          g.fillStyle = b.creeper ? "#4ade80" : b.tipo === "piedra" ? "#78716c" : "#92400e"; g.fillRect(b.x - s / 2, b.y - s / 2, s, s);
+          g.fillStyle = b.creeper ? "#16a34a" : "rgba(0,0,0,.18)"; for (let k = 0; k < 6; k++) g.fillRect(b.x - s / 2 + (k * 23) % s, b.y - s / 2 + (k * 37) % s, 8, 8);
+          if (b.creeper) { g.fillStyle = "#052e16"; g.fillRect(b.x - 18, b.y - 16, 12, 12); g.fillRect(b.x + 6, b.y - 16, 12, 12); g.fillRect(b.x - 6, b.y - 4, 12, 10); g.fillRect(b.x - 12, b.y + 4, 8, 12); g.fillRect(b.x + 4, b.y + 4, 8, 12); }
+          if (b.golpes) { g.strokeStyle = "#000"; g.lineWidth = 2; g.beginPath(); for (let k = 0; k < b.golpes * 2; k++) { g.moveTo(b.x - 20 + k * 9, b.y - 25); g.lineTo(b.x - 10 + k * 7, b.y + 22); } g.stroke(); } });
+      }
+      if (etapa === 2) {
+        g.fillStyle = "#1e1b4b"; g.fillRect(40, 30, 480, 260);
+        g.lineWidth = 2; est.pelos.forEach(p => { if (p.ok) return; g.strokeStyle = "#3b2a1a"; g.beginPath(); g.moveTo(p.x, p.y);
+          g.quadraticCurveTo(p.x + Math.cos(p.a) * p.l, p.y + Math.sin(p.a + Math.sin(ahora / 200)) * p.l, p.x + Math.cos(p.a + 1) * p.l * 1.6, p.y + Math.sin(p.a + 1) * p.l * 1.6); g.stroke(); });
+        if (raton) { g.font = "34px system-ui"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("🪮", raton[0], raton[1]); }
+        g.fillStyle = "#c4b5fd"; g.font = "700 12px system-ui"; g.textAlign = "left"; g.fillText(`Peinado: ${Math.round(est.pelos.filter(p => p.ok).length / est.pelos.length * 100)}%`, 48, 284);
+      }
+      if (etapa === 3) {
+        g.fillStyle = "#1e1b4b"; rr(g, 150, 60, 260, 120, 12, "#1e1b4b"); g.strokeStyle = "#7c3aed"; g.lineWidth = 2; g.strokeRect(152, 62, 256, 116);
+        g.fillStyle = "#e9d5ff"; g.font = "800 15px monospace"; g.textAlign = "center"; g.fillText("david_pro_alma.exe", 280, 92); g.font = "700 13px monospace"; g.fillText("CONTRASEÑA: ________", 280, 124);
+        g.fillStyle = "#fef3c7"; g.save(); g.translate(40, 200); g.rotate(-0.04); g.fillRect(0, 0, 480, 92); g.fillStyle = "#78350f"; g.font = "700 12px system-ui"; g.textAlign = "left";
+        g.fillText("🗂️ Expediente de Hora Vive · última hoja", 12, 20); g.font = "italic 14px system-ui"; g.fillText("Un sello morado con forma de aro:", 12, 46);
+        g.font = "800 16px system-ui"; g.fillText("«para la casa. —el que llegó primero»", 12, 72); g.restore();
+      }
+      if (colocando && etapa >= 0) {                                    // la pieza "se pone" (entra volando a la pantalla)
+        const k = (ahora - pone) / 700; g.save(); g.globalAlpha = 1 - Math.max(0, k - 0.6) / 0.4; g.font = `${70 - k * 20}px system-ui`; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText(PIEZAS_DAVID[etapa].ico, W / 2, H / 2 + (1 - k) * 120); g.restore();
+      }
+      if (ahora - castigoT < 250) { g.fillStyle = `rgba(239,68,68,${0.35 * (1 - (ahora - castigoT) / 250)})`; g.fillRect(0, 0, W, H); }
+      if (fin && restante > 0) { g.fillStyle = "rgba(124,58,237,.35)"; g.fillRect(0, 0, W, H); g.fillStyle = "#fff"; g.font = "900 34px system-ui"; g.textAlign = "center"; g.fillText("ACCESO CONCEDIDO", W / 2, H / 2); }
+      anim = requestAnimationFrame(dibujar);
+    }
+    empezarEtapa(0);
+    anim = requestAnimationFrame(dibujar);
+    abrirDlg(dlg);
+  }
+
   const MISIONES = {
     rexiCorte: {
       titulo: "¡A REXI LE FALTA UN CORTE!", npc: "npc-victima", secuencial: true,
@@ -6743,7 +7707,9 @@ function montar(raiz, opciones = {}) {
       textoEntregar: "…",
       objetivos: [
         { tipo: "hablar", npc: "david-distraer", texto: "Distrae a David Pro con los objetos del final (salón del primer piso)",
-          dialogo: ["(La compu de David quedó sola. Acércate y entra.)"] },
+          dialogo: ["*La compu de David quedó sola, prendida.*", ["Para entrar vas a tener que poner 4 cosas:", "📶 Modem FiberHome · ⛏️ Server de Minecraft de Richie", "🪮 Peine de Rexi · 🗂️ Expediente de Hora Vive"],
+            "(Cuando empieces, tienes 2 minutos antes de que David regrese del baño.)"] },
+        { tipo: "hablar", npc: "compu-hackeo", texto: "Entra a la compu de David: pon el Modem, el server de Richie, el Peine de Rexi y el Expediente de Hora Vive (2 min)" },
         { tipo: "hablar", npc: "obj-compu-david", texto: "Entra a la computadora de David Pro y sobrevive al plano espiritual",
           dialogo: ["(David Pro ya volvió del baño. Habla con él.)"] },
       ],
@@ -6751,7 +7717,7 @@ function montar(raiz, opciones = {}) {
       dialogos: {
         ofrecer: ["*David Pro no despega los ojos de la pantalla.*", "David Pro: «¿Otra vez tú? Ya te dije que no me molestes.»",
           "*Por un segundo, la pantalla de su laptop parpadea en morado. David no se da cuenta.*", "(Algo hay dentro de esa computadora. Tienes que alejarlo de ella.)"],
-        enCurso: () => etapaDavid() === 0 ? ["David Pro: «iiiiiieeeeeeeuuuu. No me muevo de aquí.»"] : ["David Pro: «…¿alguien tocó mi compu?»"],
+        enCurso: () => etapaDavid() === 0 ? ["David Pro: «iiiiiieeeeeeeuuuu. No me muevo de aquí.»"] : ["David Pro: «…¿alguien tocó mi compu?»"],   // (en la etapa 1 está en el baño)
         completar: ["*David Pro regresa del baño y se sienta.*", "David Pro: «…»", "David Pro: «¿Por qué siento que me conoces mejor que antes?»"],
         final: ["(Aquí irá el final de la historia del plano espiritual.)", "Misión completada: El archivo de David Pro"],
       },
@@ -7051,6 +8017,150 @@ function montar(raiz, opciones = {}) {
         completar: ["¡Eso es entrenar! Te ganaste una malteada."],
       },
     },
+    cafeParaLlevar: {
+      titulo: "¡Un café para llevar!", npc: "npc-rata", secuencial: true,
+      descripcion: "Misión secundaria. Ratatoskar, la dueña de Creamio, tiene muchos pedidos… y a Óscar.",
+      textoEntregar: "Ya terminé",
+      objetivos: [
+        { tipo: "hablar", npc: "rata-mostrador", texto: "Encuentra nuevamente a Ratatoskar (Creamio, primer piso)" },
+        { tipo: "hablar", npc: "rata-turno", texto: "Creamio Simulator: atiende bien a 5 clientes" },
+      ],
+      recompensa: { saldo: 100 },
+      dialogos: {
+        ofrecer: ["*Ratatoskar está revisando unos pedidos.*"],
+        enCurso: ["Ratatoskar: «Los pedidos.»"],
+        completar: ["*Ratatoskar sigue sentada con Óscar.*", "Tú: «Ya terminé.»", "Ratatoskar: «Ah, bueno.»", "*Sigue hablando con Óscar.*", "Tú: «¿Y mis 100 monedas?»", "Ratatoskar: «Ah, sí.»"],
+        final: () => { desbloquearLogro("empleado-creamio");
+          return ["*Saca las monedas y te las da sin dejar de ver a Óscar.*", "Tú: «¿Necesitas algo más?»", "Ratatoskar: «No.»", "*Vuelve a hablar con Óscar.*",
+            ["🏆 Logro: Empleado de Creamio", "Trabajaste mientras la dueña hablaba con Óscar."], ["☕ Minijuego permanente: Creamio Simulator", "Háblale a Ratatoskar cuando quieras trabajar otro turno ($100)."]]; },
+      },
+    },
+    mataBebes: {
+      titulo: "El Mata Bebés", get npc() { return rutaLDP() === "B" ? "npc-sala" : "ldp-erick-lab"; }, secuencial: true, requisitos: ["losDePrimero"],
+      descripcion: "Final de la historia de Hora Vive. Abre el paquete confidencial, entiende por qué existen los «Mata Bebés» y acaba con Hora Vive para siempre.",
+      textoEntregar: "Ya se acabó",
+      objetivos: [
+        { tipo: "hablar", npc: "lid-vitrina", da: "frasco-mb", texto: "Abre el paquete confidencial (vitrina de la sala de los líderes, al fondo de Mensajería Hora Vive)",
+          dialogo: ["*Rompes la cinta del paquete confidencial. Huele a formol.*",
+            ["Adentro hay frascos.", "En cada uno flota… un feto. Chiquito, arrugado. Todos con la misma etiqueta: «LOTE M.B.»"],
+            "*Debajo de los frascos hay un doble fondo: bolsitas de polvo blanco con el logo de una proteína.*",
+            "(Es lo mismo que vende el Glazer como «suplemento».)",
+            ["Pegada por dentro de la tapa, una etiqueta de envío:", "Remitente: —", "Un sello morado con forma de aro. Y a mano: «para la casa»."],
+            "*Te guardas un frasco como prueba.*", "(Regresa con quien te mandó.)"] },
+        { tipo: "hablar", get npc() { return MISIONES.mataBebes.npc; }, get texto() { return `Enséñale el frasco a ${MB_DADOR_DONDE()}`; },
+          get dialogo() {
+            return rutaLDP() === "B"
+              ? ["*Franc ve el frasco y cierra su libro. Despacio.*", "Franc: «…lo abriste.»",
+                 "Franc: «Los Mata Bebés nunca fueron de cobrarle a los de primero. Eso era la pantalla.»",
+                 "Franc: «El apodo lo pusimos a propósito. Si alguien encontraba un frasco con un feto, todos iban a pensar que era una broma pesada de los Mata Bebés, unos payasos de tercero.»",
+                 "Franc: «Nadie revisa un frasco con un feto, hermano. Por eso el polvo va abajo.»",
+                 "Franc: «Y cuando había revisión… yo tiraba los lotes al agua. ¿Nunca has pescado uno? Por eso sale el «Feto de Frank». Nunca me dejaron de decir Frank.»",
+                 "Franc: «Valeria me usó igual que a ti. En el citatorio venía mi nombre también.»",
+                 "Franc: «Hoy en la noche se juntan todos en el Cuarto de admisiones, en la planta baja. Ahí «admiten» a los de primero… y ahí guardan todo el suministro.»",
+                 "Franc: «Yo no puedo entrar. Me conocen. Tú sí.»", "(Ve al Cuarto de admisiones: el cuarto morado del lobby de la planta baja.)"]
+              : ["*Erick ve el frasco y se quita los audífonos.*", "Erick: «…lo abriste. Nadie lo había abierto nunca.»",
+                 "Erick: «¿Sabes por qué se llaman los Mata Bebés? Todos creen que es porque les quitan el dinero a los de primero.»",
+                 "Erick: «Eso es la pantalla. Si alguien encuentra un frasco con un feto, piensa que es una broma pesada de los de tercero. Y ya.»",
+                 "Erick: «Nadie revisa un frasco con un feto. Por eso el polvo va abajo. Por eso los paquetes.»",
+                 "Erick: «Cuando había revisión, Franc tiraba los lotes al agua. ¿Nunca has pescado uno? Así es como salen.»",
+                 "Erick: «Yo firmaba las entregas. Nunca supe qué firmaba. Hasta hoy.»",
+                 "Erick: «Hoy en la noche se juntan todos en el Cuarto de admisiones, en la planta baja. Ahí «admiten» a los de primero y ahí está todo el suministro.»",
+                 "Erick: «Tú tienes la tarjeta. Yo ya no tengo nada. Acaba con ellos.»", "(Ve al Cuarto de admisiones: el cuarto morado del lobby de la planta baja.)"];
+          } },
+        { tipo: "hablar", npc: "mb-admisiones", texto: "Entra al Cuarto de admisiones (el cuarto morado del lobby de la planta baja)" },
+        { tipo: "hablar", npc: "mb-lideres", texto: "¡JEFE! Derrota a los líderes de Hora Vive (necesitas un arma)" },
+        { tipo: "hablar", npc: "mb-suministro", texto: "Destruye el suministro: las 3 pilas de cajas del fondo" },
+      ],
+      recompensa: { saldo: 600, item: "expediente-hv" },
+      dialogos: {
+        get ofrecer() {
+          return rutaLDP() === "B"
+            ? ["*Franc te ve llegar. Esta vez no finge que estudia.*", "Franc: «Hermano. Tú y yo venimos en el mismo citatorio.»", "Franc: «Valeria me usó. Igual que a ti.»",
+               "Franc: «¿Te acuerdas del paquete que me recogiste? Nunca lo abrieron. Está en la vitrina de la sala de los líderes.»",
+               "Franc: «Toma mi tarjeta vieja. Todavía abre esa puerta. Ábrelo… y luego te cuento por qué nos dicen los Mata Bebés.»"]
+            : ["*Erick está solo en el laboratorio. No voltea.*", "Erick: «¿Vienes a vigilarme? Franc te mandó, ¿no?»",
+               "Erick: «Te voy a decir algo que nadie en Hora Vive sabe que sé.»",
+               "Erick: «El paquete confidencial. El que llevaste. Nunca lo abrieron. Está en la vitrina de la sala de los líderes.»",
+               "Erick: «Tú tienes la tarjeta. Ábrelo. Y luego dime si sigues queriendo ser «de los de adentro».»"];
+        },
+        get enCurso() { return rutaLDP() === "B" ? ["Franc: «Hora Vive no se va a caer solita, hermano.»"] : ["Erick: «¿Ya? Cada día que pasa, más de primero firman.»"]; },
+        get completar() {
+          return rutaLDP() === "B"
+            ? ["*Franc huele el humo en tu ropa.*", "Franc: «Ya no hay Hora Vive. Y ya no hay Mata Bebés.»", "Franc: «Mañana voy a estudiar. De verdad. Con el libro al derecho.»"]
+            : ["*Erick ve el humo que sale del lobby en las cámaras viejas del laboratorio.*", "Erick: «Lo hiciste.»", "Erick: «Ya no tengo que firmar nada. Nunca más.»"];
+        },
+        final: () => [
+          ...(rutaLDP() === "B"
+            ? ["Franc: «Una cosa más. El día que me reclutaron no fue Valeria.»", "Franc: «Me escribió alguien desde una laptop. Nunca le vi la cara. Solo firmaba «P».»",
+               "Franc: «Y la pantalla… se ponía morada.»"]
+            : ["Erick: «¿Sabes qué es lo raro? Anoche la consola vieja se prendió sola.»", "Erick: «Escribió una sola línea y se apagó:»", ["C:\\> PRIMOGENITO.EXE", "«ya llegaste?»"],
+               "Erick: «…yo no escribí eso.»"]),
+          ["Misión completada: El Mata Bebés", "• 600 monedas", "• Expediente de Hora Vive", "• Hora Vive dejó de existir: la sala de los líderes quedó clausurada"],
+          Misiones.estado.completadas.includes("influencerGuero")
+            ? "(Dicen que el culto del tercer piso anda hablando de un nuevo dios…)"
+            : "(Dicen que el culto del tercer piso anda raro… pero primero ayuda a Marshmello con su misión.)"],
+      },
+    },
+    verdaderaVerdad: {
+      titulo: "El encuentro de la verdadera verdad", npc: "npc-buscador", secuencial: true, requisitos: ["mataBebes", "influencerGuero"],
+      descripcion: "La última misión del culto del Güero. Tienen nuevas ideas sobre quién es el verdadero dios… y quieren investigar a David Pro.",
+      textoEntregar: "Ver la Reliquia",
+      objetivos: [
+        { tipo: "hablar", npc: "npc-marshmello", texto: "Pregúntale a Marshmello qué encontró en sus historias viejas (sala del culto)",
+          dialogo: ["Marshmello: «Hermano, mira esta historia. La subí hace un año, en mi primer día.»",
+            ["📱 Historia vieja: «Primer día 🙏 #NuevaEscuela»", "En el fondo, borroso: un alumno con una laptop. La pantalla brilla morado."],
+            "Marshmello: «Es David Pro. El de la compu. Sale atrás en TODAS mis historias viejas. Siempre en el mismo lugar. Siempre con la misma ropa.»",
+            "Marshmello: «Y en ninguna se le ve la cara.»", "El Buscador: «El Primogénito… ¿y si él es el verdadero dios?»",
+            "El Profeta: «Necesitamos a alguien que haya estado en primero con él.»",
+            "Marshmello: «El güero del gimnasio. Brandon. Iba en ese grupo, sale en las fotos.»", "*Nadie en la sala reacciona al nombre.*", "(Ve con Brandon al gimnasio.)"] },
+        { tipo: "hablar", npc: "npc-brandon", da: "botella-brandon", texto: "Pregúntale a Brandon por David Pro (gimnasio)",
+          dialogo: ["Brandon: «¿David Pro? Sí, iba conmigo en primero.»", "Brandon: «Casi no hablaba. Nunca lo vi comer. Nunca lo vi llegar: cuando yo entraba, él ya estaba sentado.»",
+            "Brandon: «Una vez le pregunté qué tanto hacía en la compu. Me dijo: «esperando».»", "Brandon: «¿Esperando qué?, le dije. Y nomás se rió.»",
+            "Brandon: «¿Que unos vatos del tercer piso quieren hablar conmigo? ¿Los que me piden que les firme botellas de agua?»",
+            "Brandon: «…va. Vamos. Pero llevo mi agua.»", "(Brandon se va a la sala del culto. Síguelo al tercer piso.)"] },
+        { tipo: "hablar", npc: "vv-brandon", texto: "Habla con Brandon en la sala del culto (tercer piso)",
+          dialogo: ["*Brandon entra a la sala del culto. La vela parpadea. Su cabello brilla con la luz del pasillo.*",
+            "El Iluminado: «…ese es el rostro. EL ROSTRO DEL REFLEJO.»", "El Profeta: «La botella de agua… ¡TRAE LA BOTELLA DE AGUA!»",
+            "El Buscador: *revisa su lista de 47 nombres* «…no está en la lista.»", "El Buscador: «…porque el Güero no tiene nombre. Tiene presencia.»",
+            ["Los tres: «¡¡¡EL GÜERO!!!»", "*Se arrodillan.*"], "Brandon: «¿Qué? ¿Yo? Nomás vine a hablar de David, bro.»",
+            "Marshmello: *grabando* «Hermano, esto es lo más viral que me ha pasado en la vida.»",
+            "Brandon: «…bueno. Si soy su dios, mi primera orden es: ayúdenme a entender qué onda con David.»", "El Buscador: «Lo que el Güero ordene.»",
+            "Brandon: «Lo único que sé: en primero, David entregó su ficha de admisión en papel. Nadie más lo hizo. Si queda algo, está en el Cuarto de admisiones.»",
+            "Brandon: «Y tomen *les da su botella de agua*, pa' que dejen de pedirme que se las firme.»",
+            "El Profeta: *llorando* «Es… el tercer artilugio.»", "(Busca entre los restos del Cuarto de admisiones, en el lobby de la planta baja.)"] },
+        { tipo: "hablar", npc: "vv-restos-adm", da: "ficha-david", texto: "Busca la ficha de David Pro entre los restos del Cuarto de admisiones (planta baja)",
+          dialogo: ["*Entre las cenizas, un archivero sobrevivió al fuego. Adentro hay una sola ficha.*",
+            ["FICHA DE ADMISIÓN", "Nombre: David P.", "Fecha de ingreso: (en blanco)", "Fecha de nacimiento: (en blanco)"],
+            ["Foto: no hay.", "Solo un aro dorado dibujado a mano donde debería ir la cara."], ["Observaciones:", "«Ya estaba aquí cuando llegamos.»"],
+            "*La ficha está tibia. El resto del archivero está frío.*", "(Llévasela al culto.)"] },
+        { tipo: "hablar", npc: "npc-buscador", texto: "Lleva la ficha al culto (sala del tercer piso)",
+          dialogo: ["Brandon: «“Ya estaba aquí cuando llegamos”… ¿quién escribe eso en una ficha, bro?»", "El Profeta: «Anoche soñé con un aro dorado. Y no era del Güero.»",
+            "El Iluminado: «El Primogénito no es un dios. Es otra cosa.»", "El Buscador: «Si existe, necesitamos protección. Los tres artilugios del Güero, juntos, tienen poder.»",
+            "El Buscador: «La Reliquia del Güero. Las Historias del Culto. La botella del Güero. Hay que unirlas en una sola.»",
+            "Brandon: «¿Unirlas? Pues compriman todo en la Smith. Ahí se comprime todo, bro.»",
+            "(Lleva los tres artilugios a la máquina Smith del gimnasio.)"] },
+        { tipo: "hablar", npc: "smith-reliquias", texto: "Comprime los 3 artilugios en la máquina Smith (gimnasio)",
+          dialogo: ["*Pones la Reliquia del Güero, el celular con las Historias del Culto y la botella de agua de Brandon en la barra de la Smith.*",
+            "Brandon: *desde la puerta* «Échale todo el peso, bro.»", "*Bajas la barra. Los discos tiemblan. Algo cruje.*",
+            ["💥 CRUNCH", "Los tres artilugios se aplastan en uno solo. Brilla dorado."], "El Glazer: «…bro. ¿Qué le hiciste a mi Smith?»",
+            "(Regresa con el Buscador.)"] },
+      ],
+      recompensa: { saldo: 400, item: "reliquia-suprema" },
+      dialogos: {
+        ofrecer: ["*La vela del culto está apagada. En la mesa hay un periódico escolar: «CIERRAN EL CUARTO DE ADMISIONES TRAS INCENDIO».*",
+          "El Buscador: «Hermano. Hora Vive cayó. Dicen que adentro de sus paquetes había… cosas.»",
+          "El Profeta: «Y en sus papeles, una sola firma: «el que llegó primero».»",
+          "El Buscador: «Llevamos meses buscando al Güero. ¿Y si nos equivocamos de dios?»", "El Iluminado: «¿Y si el verdadero es… el Primogénito?»",
+          "El Buscador: «Tenemos que investigarlo. Marshmello encontró algo en sus historias viejas.»"],
+        enCurso: ["El Buscador: «La verdad está cerca, hermano. Muy cerca.»", "*Brandon, si está, saluda con la mano.*"],
+        completar: ["*El Buscador sostiene la Reliquia con las dos manos. Brandon le echa un ojo, curioso.*", "El Buscador: «La Reliquia Suprema del Dios Benevolente.»",
+          "Brandon: «Se ve bien perrona, bro.»"],
+        final: ["El Buscador: «Dicen que despierta el poder del visor de energía. Que con él se ve lo que no se puede ver.»",
+          "El Profeta: «Úsalo cuando el aro dorado aparezca. Lo soñé.»", "Brandon: «Y si ves a David… salúdamelo. Creo.»",
+          ["Misión completada: El encuentro de la verdadera verdad", "• 400 monedas", "• La Reliquia Suprema del Dios Benevolente",
+            "• Ya puedes equipar el VISOR DE ENERGÍA con el encargado de objetos perdidos (lobby)", "• Brandon ahora vive en la sala del culto"]],
+      },
+    },
   };
   const CLAVE_MISIONES = "espacio.misiones.v1";
   const Misiones = {
@@ -7228,6 +8338,11 @@ function montar(raiz, opciones = {}) {
         + (ids.length > 3 ? `<p class="ee-mh-mas">y ${ids.length - 3} más…</p>` : "");
     },
   };
+  // La misión de David Pro cambió (distracción con cinemática + hackeo en 4 partes): se reinicia una sola vez para poder jugarla
+  if (!leer("espacio.davidV2", false)) {
+    Misiones.estado.completadas = Misiones.estado.completadas.filter(id => id !== "archivoDavid"); delete Misiones.estado.activas.archivoDavid;
+    escribir(CLAVE_PLANO, null); escribir("espacio.davidV2", true); escribir(CLAVE_MISIONES, Misiones.estado);
+  }
   // Signo sobre la cabeza del NPC: "!" tiene una misión para ti, "?" ya puedes entregarla
   function marcaMision(npcId, px, py, forzar = null) {
     const e = forzar || Misiones.estadoNpc(npcId); if (!e) return;
@@ -7580,6 +8695,7 @@ function montar(raiz, opciones = {}) {
     construirSotano2();
     construirSalaLideres();
     construirArenaMario();
+    construirArenaHV();
     construirPisoAlto(PISO2, 2, true);
     construirPisoAlto(PISO3, 3, false);
     construirBarberia();
@@ -8045,7 +9161,7 @@ function montar(raiz, opciones = {}) {
     MAQUINAS_GYM.forEach(maq => maq.px.forEach((r, i) => {
       const x0 = gx(r[0]), y0 = gy(r[1]), x1 = gx(r[2]), y1 = gy(r[3]);
       INTERACTIVOS_ESCALERA.push({ id: `maq-${maq.id}-${i}`, nombre: maq.nombre, etiquetaAccion: "Usar",
-        zona: [x0 - 1.3, y0 - 1.3, x1 + 1.3, y1 + 1.6], ancla: [(x0 + x1) / 2, Math.min(y1 + 0.6, g.y1 - 0.4)], alHablar: () => abrirMinijuego(maq) });
+        zona: [x0 - 1.3, y0 - 1.3, x1 + 1.3, y1 + 1.6], ancla: [(x0 + x1) / 2, Math.min(y1 + 0.6, g.y1 - 0.4)], alHablar: () => (maq.id === "smith" && Misiones.esperando("smith-reliquias") ? comprimirEnSmith() : abrirMinijuego(maq)) });
       const abajo = y1 + 0.5 < g.y1 - 0.3, ly = abajo ? y1 + 0.5 : y0 - 0.45;
       decals.push(() => {
         const [lx, lyp] = P((x0 + x1) / 2, ly, 0), hecha = Misiones.maquinaHecha(maq.id), txt = (hecha ? "✓ " : "") + maq.nombre;
@@ -8217,6 +9333,7 @@ function montar(raiz, opciones = {}) {
   // Nombre del lugar donde está el jugador: se muestra arriba, en el encabezado del mapa
   function nombreZona(x, y) {
     if (mundo.gimnasio && y < mundo.limiteLobby && x >= mundo.gimnasio.x0) return "Gimnasio";
+    if (y >= HV_ARENA.y0 - 1) return "Cuarto de admisiones (Hora Vive)";
     if (y >= MARIO_ARENA.y0 - 1) return "El salón apestoso";
     if (y >= LIDERES.y0 - 1) return "Sala de los líderes";
     if (y >= BARBERIA.y0 - 1) return "LIONS BARBER SHOP";
@@ -8236,6 +9353,7 @@ function montar(raiz, opciones = {}) {
   const RJ = 0.26;
   // Límites de caminar según la zona: lobby/patio/coliseo, primer piso o sótano
   function limitesEn(y) {
+    if (y >= HV_ARENA.y0 - 1) return [HV_ARENA.x0, HV_ARENA.y0, HV_ARENA.x1, HV_ARENA.y1];
     if (y >= MARIO_ARENA.y0 - 1) return [MARIO_ARENA.x0, MARIO_ARENA.y0, MARIO_ARENA.x1, MARIO_ARENA.y1];
     if (y >= LIDERES.y0 - 1) return [LIDERES.x0, LIDERES.y0, LIDERES.x1, LIDERES.y1];
     if (y >= BARBERIA.y0 - 1) return [BARBERIA.x0, BARBERIA.y0, BARBERIA.x1, BARBERIA.y1];
@@ -8353,18 +9471,8 @@ function montar(raiz, opciones = {}) {
     soltarRaton();
     if (!arrastre || Math.hypot(ev.clientX - arrastre.x, ev.clientY - arrastre.y) > 8) { arrastre = null; return; }
     arrastre = null;
-    const r = lienzo.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
-    const et = etiquetasPantalla.find(e => px >= e.x0 && px <= e.x1 && py >= e.y0 && py <= e.y1);
-    if (et) { abrirPanel(et.id); return; }
+    // Con el mouse ya NO se abre nada (ni NPC, ni mesas, ni espacios): para interactuar, acércate y presiona E
     const [wx, wy] = aMundo(ev.clientX, ev.clientY);
-    if (wx >= NPC.hit[0] && wx <= NPC.hit[2] && wy >= NPC.hit[1] && wy <= NPC.hit[3]) { abrirNPC(); return; }
-    if (wx >= NPC_JP.hit[0] && wx <= NPC_JP.hit[2] && wy >= NPC_JP.hit[1] && wy <= NPC_JP.hit[3]) { abrirJP(); return; }
-    if (wx >= NPC_GYM.hit[0] && wx <= NPC_GYM.hit[2] && wy >= NPC_GYM.hit[1] && wy <= NPC_GYM.hit[3]) { abrirGym(); return; }
-    for (const t of npcsDelMundo()) if ((!t.visible || t.visible()) && wx >= t.hit[0] && wx <= t.hit[2] && wy >= t.hit[1] && wy <= t.hit[3]) { t.alHablar(); return; }
-    if (jefeDerrotado && wx >= TIENDA_MERMA.hit[0] && wx <= TIENDA_MERMA.hit[2] && wy >= TIENDA_MERMA.hit[1] && wy <= TIENDA_MERMA.hit[3]) { abrirMerma(); return; }
-    if (wx >= ESTATUA.hit[0] && wx <= ESTATUA.hit[2] && wy >= ESTATUA.hit[1] && wy <= ESTATUA.hit[3]) { ESTATUA.alHablar(); return; }
-    const e = espacios.find(s => wx >= s.hit[0] && wx <= s.hit[2] && wy >= s.hit[1] && wy <= s.hit[3]);
-    if (e) { abrirPanel(e.id); return; }
     if (tienePistola) return;                  // con arma, el clic es para disparar, no para caminar
     if (wx > 0 && wy > 0 && wx < Math.max(mundo.gimnasio ? mundo.gimnasio.x1 : W, PW) && wy < H) irAPunto(wx, wy);
   }, sig);
@@ -8394,13 +9502,14 @@ function montar(raiz, opciones = {}) {
     return [sx, sy];
   }
   function actualizar(dt) {
+    revisarPlaticaRata(dt); actualizarCineDavid(dt);
     let sx = 0, sy = 0;
     if (teclas.has("arrowup") || teclas.has("w")) sy -= 1;
     if (teclas.has("arrowdown") || teclas.has("s")) sy += 1;
     if (teclas.has("arrowleft") || teclas.has("a")) sx -= 1;
     if (teclas.has("arrowright") || teclas.has("d")) sx += 1;
     if (joy.x || joy.y) { sx = joy.x; sy = joy.y; }
-    if (performance.now() < aturdidoHasta) { sx = 0; sy = 0; ruta = []; }   // aturdido por el aullido de Rexi
+    if (performance.now() < aturdidoHasta || performance.now() < quietoHasta) { sx = 0; sy = 0; ruta = []; }   // aturdido por el aullido de Rexi
     let dx = 0, dy = 0;
     if (sx || sy) {
       ruta = [];
@@ -8454,8 +9563,8 @@ function montar(raiz, opciones = {}) {
     actualizarBalas(dt);
     actualizarEnemigos(dt);
     actualizarColiseo(dt);
-    // Cámara
-    const [px, py] = P(jug.x, jug.y, 0.6);
+    // Cámara (en una cinemática sigue a otro punto)
+    const [px, py] = camObjetivo ? P(camObjetivo[0], camObjetivo[1], 0.6) : P(jug.x, jug.y, 0.6);
     if (cam.px === undefined) { cam.px = px; cam.py = py; }
     const k = 1 - Math.exp(-dt * 7); cam.px += (px - cam.px) * k; cam.py += (py - cam.py) * k;
     // Pequeña sacudida de cámara mientras dura el rayo definitivo (tecla P)
@@ -8572,7 +9681,7 @@ function montar(raiz, opciones = {}) {
     } });
     dibujarAcompanantes(dyn); dibujarAvisosGuardian(dyn); dibujarAvisosCentinela(dyn);
     if (marshFase() === "sigue") dyn.push({ k: marshPos.x + marshPos.y + 0.005, h: 99, fn: dibujarMarshSiguiendo });
-    revisarMesasSala(); dibujarMesasVolando(dyn); dibujarExplosiones(dyn); dibujarPeligrosMario(dyn);
+    revisarMesasSala(); dibujarMesasVolando(dyn); dibujarExplosiones(dyn); dibujarPeligrosMario(dyn); dibujarPeligrosHV(dyn); dibujarCineDavid(dyn);
     // Pelea con Rexi: alumnos evacuando, ondas del aullido, estrellas de aturdido y puertas cerradas
     { const ahora = performance.now();
       for (let k = fugitivos.length - 1; k >= 0; k--) {
@@ -8617,6 +9726,7 @@ function montar(raiz, opciones = {}) {
       if (en.esRexi) { dibujarRexi(en); return; }
       if (en.esGuardian) { dibujarGuardian(en); return; }
       if (en.esMario) { dibujarMarioJefe(en); return; }
+      if (en.esLiderHV) { dibujarLiderHV(en); return; }
       if (en.esJefe) {
         dibujarJefe(en);
         const [bpx, bpy] = P(en.x, en.y, 1.15 + Math.sin((en.bob || 0) * 2.2) * 0.18);
@@ -8717,6 +9827,7 @@ function montar(raiz, opciones = {}) {
     dibujarNieblaHV();
     dibujarNocheLDP();
     dibujarVerdeMario();
+    dibujarFuegoHV();
 
     // Destello de pantalla completa mientras dura el rayo definitivo (tecla P)
     if (rayoUltra) {
@@ -8760,6 +9871,9 @@ function montar(raiz, opciones = {}) {
   const nombreBarraJefe = barraJefe.querySelector(".ee-jefe-nombre");
   function actualizarBarraJefe() {
     const rexi = enemigos.find(e => e.esRexi), guardian = enemigos.find(e => e.esGuardian), mario = enemigos.find(e => e.esMario);
+    const hvL = enemigos.filter(e => e.esLiderHV);
+    if (hvL.length) { barraJefe.hidden = false; const hp = hvL.reduce((a, e) => a + Math.max(0, e.hp), 0), mx = hvL.reduce((a, e) => a + e.hpMax, 0), pie = hvL.filter(e => !e.caido).length;
+      const tm = `LOS LÍDERES DE HORA VIVE · ${pie} de ${hvL.length} en pie`; if (nombreBarraJefe.textContent !== tm) nombreBarraJefe.textContent = tm; jefeRelleno.style.width = (acotar(hp / mx, 0, 1) * 100).toFixed(1) + "%"; return; }
     if (mario) { barraJefe.hidden = false; const tm = "MARIO · El Doctor de la Pestilencia" + (mario.fase === 2 ? " · ¡DESPIERTO!" : "") + ` · ${Math.max(0, Math.ceil(mario.hp))} / ${mario.hpMax}`;
       if (nombreBarraJefe.textContent !== tm) nombreBarraJefe.textContent = tm; jefeRelleno.style.width = (acotar(mario.hp / mario.hpMax, 0, 1) * 100).toFixed(1) + "%"; return; }
     const j = guardian || rexi || (bossCol && bossCol.mecha && enemigos.includes(bossCol) ? bossCol : null);
@@ -8950,11 +10064,16 @@ function montar(raiz, opciones = {}) {
     else if (a === "francFin") { Misiones._francPregunto = b.dataset.id === "hv"; if (Misiones._cbFranc) { const f = Misiones._cbFranc; Misiones._cbFranc = null; f(true); } }
     else if (a === "ldpOp") opcionLDP(+b.dataset.id);
     else if (a === "marioDespertar") despertarMario();
-    else if (a === "davidDistraido") { cerrarDlg(el.dlgPersonaje); Misiones.hablo("david-distraer"); const p = Misiones._pendiente; Misiones._pendiente = null; if (p) dialogoPersonaje(el.dlgPersonaje, { nombre: "Salón", icono: "💻", idTitulo: "eePersTit", paginas: p }); }
+    else if (a === "davidDistraido") { cerrarDlg(el.dlgPersonaje); iniciarCineDavid(); }
     else if (a === "davidEntrar") { cerrarDlg(el.dlgPersonaje); entrarPlano(); }
     else if (a === "marioOp") opcionMario(b.dataset.id);
     else if (a === "marioPelear") iniciarPeleaMario();
     else if (a === "marioSalir") { cerrarDlg(el.dlgPersonaje); empezarTransicion("marioSalon"); }
+    else if (a === "hvPelear") arrancarHV();
+    else if (a === "rataEscena1") rataEscena1();
+    else if (a === "rataTurno") abrirCreamioSim();
+    else if (a === "rataPreg") respuestaRata(+b.dataset.id);
+    else if (a === "hvSalir") { cerrarDlg(el.dlgPersonaje); empezarTransicion("hvSalir"); }
     else if (a === "marioSeguro") dialogoPersonaje(el.dlgPersonaje, { nombre: "Mario", apariencia: AP_MARIO, idTitulo: "eePersTit",
       paginas: ["*Le enseñas el seguro de carro. Mario abre los ojos de golpe.*", "Mario: «...mi seguro.»", "Mario: «Pérdida total... y el seguro no cubría... 𓆣𓅓... daños por Mario Kart.»",
         "Mario: «Le di vuelta en la curva del arcoíris, ¿sabes? En la vida real.»", "Mario: «Quédatelo. Ya no sirve. Como yo antes de mi turno del OXXO.»", "*Se vuelve a dormir con una lagrimita.*"] });
@@ -9229,6 +10348,7 @@ function montar(raiz, opciones = {}) {
         return lista.length || pescaVista.length ? `<ul class="ee-arma-lista">${lista.map(it => `<li class="ee-arma-op">${iconoPescaURL(it.id) ? `<img class="ee-pesca-ico" src="${iconoPescaURL(it.id)}" alt="">` : ""}<div style="flex:1"><b>${esc(it.nombre)}</b> × ${pescados[it.id]} <span class="ee-precio" style="color:${RAREZAS_PESCA[it.r].col}">${RAREZAS_PESCA[it.r].nombre}</span><br><span class="ee-nota">${esc(it.desc)}</span></div></li>`).join("")}</ul>
           <p class="ee-nota">Colección: ${PESCA.filter(it => pescaVista.includes(it.id)).length} / ${PESCA.length}</p>`
           : '<p class="ee-nota">Aún no pescas nada. Hay un estanque de pipí en el baño de la derecha (primer piso).</p>'; })()}
+      ${htmlLogros()}
       <h3 class="ee-inv-sub">Objetos de misiones</h3>
       <p class="ee-nota">No se equipan: sirven para avanzar.</p>
       ${items.length ? `<ul class="ee-arma-lista">${items.map(i => `<li class="ee-arma-op"><div><b>${esc(i.nombre)}</b><br><span class="ee-nota">${esc(i.desc)}</span></div></li>`).join("")}</ul>` : '<p class="ee-nota">Aún no tienes objetos de misiones.</p>'}
