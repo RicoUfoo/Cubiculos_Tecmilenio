@@ -8,8 +8,6 @@
   --text-main: #0E2218;
   --text-muted: #4F645A;
   --border-color: #D0DDD5;
-  /* T44: color del anillo de foco (contraste >= 3:1 sobre las superficies; el mint #86E3AE sobre blanco daba 1.4:1) */
-  --focus: #0A6B3C;
   --libre-bg: #E3F4EA;
   --libre-borde: #7FCBA0;
   --ocupado-bg: #F6D5D5;
@@ -24,13 +22,9 @@
 }
 [data-tema="light"] { color-scheme: light; }
 
-/* Si la persona fuerza el tema claro, los controles nativos (listas desplegables, barras) también */
-[data-tema="light"] { color-scheme: light; }
-
 /* T43: Variables para el tema oscuro activado manualmente o por preferencia del sistema */
 [data-tema="dark"] {
-  color-scheme: dark;   /* sin esto, con el sistema en claro y el tema forzado a oscuro, las listas desplegables salian blancas */
-  --focus: #6BE19B;
+  color-scheme: dark;
   --libre-bg: rgba(107, 225, 155, 0.16);
   --libre-borde: #3F9D68;
   --ocupado-bg: rgba(217, 139, 139, 0.22);
@@ -51,8 +45,6 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="light"]) {
-    color-scheme: dark;
-    --focus: #6BE19B;
     --libre-bg: rgba(107, 225, 155, 0.16);
     --libre-borde: #3F9D68;
     --ocupado-bg: rgba(217, 139, 139, 0.22);
@@ -81,14 +73,14 @@ body {
   color: var(--text-main);
 }
 
-.hero { --focus: var(--accent); background: var(--deep); color: var(--on-deep); padding: 28px 16px; }   /* T44: sobre el verde oscuro, anillo mint */
+.hero { background: var(--deep); color: var(--on-deep); padding: 28px 16px; }
 .wrap { max-width: 1000px; margin: 0 auto; }
 .top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; }
 .eyebrow { margin: 0 0 6px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--on-deep-muted); }
 h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 .lede { margin: 12px 0 0; max-width: 480px; font-size: 17px; }
 .beneficios { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
-.beneficios li::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); font-weight: 700; }   /* T45: lo que va tras la barra es el texto alternativo (vacío): el lector no lee la marca */
+.beneficios li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
 .cta { display: block; margin-top: 20px; padding: 14px 22px; text-align: center; border-radius: 10px; background: var(--on-deep); color: var(--deep); font-weight: 600; text-decoration: none; }
 .cta:hover { background: #fff; }
 .cta:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -119,7 +111,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 }
 .booth:hover { border-color: var(--accent); }
 @media (hover: hover) { .booth:hover { transform: translateY(-2px); } }
-.booth:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.booth:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .booth small { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
 .booth b { font-size: 36px; line-height: 1; }
 .booth span { font-size: 13px; color: var(--text-muted); }
@@ -148,7 +140,7 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
   background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 8px;
 }
 .slot:hover { border-color: var(--accent); }
-.slot:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 /* Franjas libres y ocupadas */
 .slot--libre { background: rgba(134, 227, 174, 0.15); border-color: var(--accent); }
@@ -183,7 +175,6 @@ h1 { margin: 0; font-size: clamp(2.2rem, 7vw, 3.4rem); line-height: 1; }
 body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
 .detalle {
   --pad: 20px;
-  scroll-padding-bottom: 9rem;   /* T44: al llegar con Tab a un botón, el navegador lo desplaza por encima de la barra fija (≈125px) */
   width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh;
   margin: auto 0 0; padding: 0;
   border: none; border-radius: 16px 16px 0 0; color: var(--text-main); background: var(--card-bg);
@@ -206,7 +197,7 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
   background: var(--bg); border: 1.5px solid var(--border-color); border-radius: 10px;
 }
 .detalle-cerrar:hover { border-color: var(--accent); }
-.detalle-cerrar:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.detalle-cerrar:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .detalle-dato { margin: 12px 0 0; font-size: 14px; color: var(--text-muted); }
 .detalle-estado {
   display: inline-block; margin: 14px 0 0; padding: 6px 12px; border-radius: 999px;
@@ -255,7 +246,7 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
   padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; background: var(--text-main); color: var(--bg);
 }
-.agenda-item--pasado { opacity: .72; }   /* T45: con .55 no se llegaba a contraste AA (4.5:1) */
+.agenda-item--pasado { opacity: .55; }
 .agenda-item--ahora { box-shadow: 0 0 0 2px var(--text-main); }
 
 /* Botones */
@@ -273,7 +264,7 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
   border: 1.5px solid var(--deep); border-radius: 10px;
 }
 .btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
-.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .btn--sec { color: var(--text-main); background: var(--card-bg); border-color: var(--border-color); }
 .btn--sec:hover { background: var(--bg); color: var(--text-main); }
 .btn:disabled { color: var(--text-muted); background: var(--bg); border-color: var(--border-color); cursor: not-allowed; }
@@ -286,13 +277,13 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
   width: 100%; min-height: 44px; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--text-main);
   background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 10px;
 }
-.campo input:focus-visible, .campo select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.campo input:focus-visible, .campo select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .campo select:disabled { color: var(--text-muted); background: var(--bg); }
 .campo small { display: block; margin-top: 6px; font-size: 13px; color: var(--text-muted); }
 /* T49: estilos de error recuperados (borde + ícono + texto, no solo color) */
 .campo [aria-invalid="true"] { border-color: var(--peligro-borde); background: var(--peligro-bg); }
 .campo .campo-error { color: var(--peligro-texto); font-weight: 600; }
-.campo .campo-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+.campo .campo-error:not(:empty)::before { content: "⚠ "; }
 .campos-fila { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
 .detalle-ficha .ancho { grid-column: span 2; }
 .reserva-botones { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
@@ -315,6 +306,10 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
 .slot--nueva { outline: 3px solid var(--exito); outline-offset: 1px; animation: nueva-pulso 1s ease-in-out 3; }
 .agenda-item--nueva { outline: 3px solid var(--exito); outline-offset: 2px; animation: nueva-pulso 1s ease-in-out 3; }
 @keyframes nueva-pulso { 50% { outline-color: var(--accent); } }
+@media (prefers-reduced-motion: reduce) {
+  .slot--nueva, .agenda-item--nueva { animation: none; }
+  .aviso { transition: none; }
+}
 .aviso {
   position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 10; transform: translate(-50%, 20px);
   width: max-content; max-width: calc(100% - 32px); padding: 14px 20px; border-radius: 12px;
@@ -326,25 +321,25 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
 .agenda-tuya {
   display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-main); background: var(--card-bg); border: 1.5px solid var(--accent);   /* T45: antes var(--deep): en oscuro era verde casi negro sobre verde casi negro (1.08:1) */
+  color: var(--text-main); background: var(--card-bg); border: 1.5px solid var(--accent);
 }
 .agenda-cancelar { grid-area: accion; width: 100%; }
 .btn--chico { min-height: 44px; padding: 8px 14px; font-size: 14px; }
 .btn--peligro { color: #fff; background: var(--peligro); border-color: var(--peligro); }
-/* T49: sin esto heredaba .btn:hover y el boton destructivo se volvia verde */
+/* T49: sin esto heredaba .btn:hover y el botón destructivo se volvía verde */
 .btn--peligro:hover { color: #fff; background: var(--peligro-hover); border-color: var(--peligro-hover); }
 .btn--peligro:focus-visible { outline: 3px solid var(--peligro-borde); outline-offset: 2px; }
 .confirmar-error { margin: 14px 0 0; font-size: 14px; font-weight: 600; color: var(--peligro-texto); }
 .confirmar-error:not(:empty) {
   padding: 10px 12px; background: var(--peligro-bg); border: 1.5px solid var(--peligro-borde); border-radius: 10px;
 }
-.confirmar-error:not(:empty)::before { content: "⚠ "; content: "⚠ " / "Error: "; }
+.confirmar-error:not(:empty)::before { content: "⚠ "; }
 
 .aviso--accion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
 .aviso--accion[hidden] { display: none; }
 .aviso-texto { min-width: 0; }
-.aviso--accion .aviso-texto::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
-.aviso--error .aviso-texto::before { content: "⚠ "; content: "⚠ " / "Error: "; color: #F6D5D5; }
+.aviso--accion .aviso-texto::before { content: "✓ "; color: var(--accent); }
+.aviso--error .aviso-texto::before { content: "⚠ "; color: #F6D5D5; }
 .aviso-boton {
   -webkit-appearance: none; appearance: none; font: inherit; font-weight: 700; cursor: pointer;
   min-height: 44px; padding: 8px 18px; color: var(--accent); background: transparent;
@@ -380,51 +375,3 @@ body:has(.detalle[open]), html.detalle-abierto body { overflow: hidden; }
   .leyenda-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .franjas-hint { display: none; }
 }
-
-/* =====================================================================================
-   T44: OPERACION COMPLETA POR TECLADO
-   ===================================================================================== */
-/* Enlace "Saltar al contenido": invisible hasta que recibe foco con Tab */
-.saltar {
-  position: absolute; left: 12px; top: -80px; z-index: 100; padding: 12px 18px; border-radius: 10px;
-  font-weight: 700; text-decoration: none; background: var(--on-deep); color: var(--deep);
-  transition: top .12s;
-}
-.saltar:focus { top: 12px; outline: 3px solid var(--accent); outline-offset: 2px; }
-/* El contenedor recibe foco por programa (tabindex="-1") al saltar: no es un control, no lleva anillo */
-.contenido:focus { outline: none; }
-/* Titulos a los que se manda el foco por programa (detalle, pasos del formulario): si se ve donde quedo */
-#detalleTitulo:focus-visible, .reserva-titulo:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: 6px; }
-/* Teclas en la guia de lectura */
-kbd {
-  font: inherit; font-size: .85em; white-space: nowrap; padding: 1px 6px; border-radius: 6px;
-  background: var(--bg); border: 1.5px solid var(--border-color); border-bottom-width: 3px;
-}
-/* El boton de tema muestra tambien visualmente si esta activo (no solo por aria-pressed) */
-.btn-tema[aria-pressed="true"] { background: rgba(255, 255, 255, 0.24); border-color: var(--on-deep); }
-
-/* Franjas: borde al pasar encima cuando esta ocupada */
-.slot--ocupada:hover { border-color: var(--peligro-borde); }
-
-/* Linea de tiempo: las marcas de las horas de los extremos no se salen de la barra; en celular solo cada 4 h */
-.lt-horas span:first-child { transform: none; }
-.lt-horas span:last-child { transform: translateX(-100%); }
-.lt-horas span:nth-child(even) { display: none; }
-@media (min-width: 480px) { .lt-horas span:nth-child(even) { display: block; } }
-
-/* Aviso flotante: icono check (T31). Decorativo en pantalla; el texto alternativo lo da cada variante */
-.aviso::before { content: "✓ "; content: "✓ " / ""; color: var(--accent); }
-.aviso--accion::before { content: none; }
-
-/* Entrada del detalle y movimiento reducido */
-.detalle[open] { animation: detalle-entra .18s ease-out; }
-@keyframes detalle-entra { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-  .booth, .aviso, .saltar { transition: none; }
-  .detalle[open], .slot--nueva, .agenda-item--nueva { animation: none; }
-}
-
-/* Barra para volver al portal (cubiculos.html) */
-.barra-volver { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: var(--deep); }
-.barra-volver a { color: var(--on-deep); font-weight: 600; }
-.barra-volver a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
