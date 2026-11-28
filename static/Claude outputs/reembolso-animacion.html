@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Animación · Reembolso (pulso de gravedad)</title>
+<style>html,body{margin:0;height:100%;background:#0a0607}canvas{display:block;width:100vw;height:100vh}
+#info{position:fixed;left:12px;top:10px;color:#fde2e2;font:13px system-ui}</style></head>
+<body><canvas id="lienzo"></canvas><div id="info">Animación del ataque «Reembolso» de JP (pulso de gravedad estilo Cyberpunk: Edgerunners). Clic = repetir.</div>
+<script>
+/* ======================================================================
+   DEMO AISLADA del ataque «Reembolso» (sacado de barberia-jp.html).
+   - pulsoGrande(p, ahora): círculo en perspectiva que carga, gira y explota.
+   - Cráter + escombros: lo que queda en el piso después del golpe.
+   - pellizco(): distorsión (el aire se chupa hacia el centro).
+   Coordenadas: el juego usa casillas del mundo; P(x, y) las pasa a píxeles
+   y S es el tamaño de una casilla en píxeles.
+   Datos de un pulso: { x, y, r, tAviso, t0, grande: true }
+     tAviso = cuando empieza a cargar, t0 = momento del golpe (0.9 s después).
+   Para integrarlo de vuelta: reemplazar pulsoGrande() en barberia-jp.html.
+   ====================================================================== */
+const TAU = Math.PI * 2, lienzo = document.getElementById("lienzo"), c = lienzo.getContext("2d");
+let S = 44, ancho = 0, alto = 0, offX = 0, offY = 0, sacudida = 0;
+function medir() { const dpr = Math.min(2, devicePixelRatio || 1); ancho = innerWidth; alto = innerHeight;
+  lienzo.width = ancho * dpr; lienzo.height = alto * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S = Math.min(ancho / 26, alto / 15); offX = (ancho - 26 * S) / 2; offY = (alto - 14 * S) / 2; }
+addEventListener("resize", medir); medir();
+const P = (x, y) => [offX + x * S, offY + y * S];
+const sacudir = n => { sacudida = Math.max(sacudida, n); };
+let pulsosG = [], crateres = [], escombros = [];
+
+function pulsoGrande(p, ahora) {                                          // Reembolso: pulso de gravedad mejorado
+  const [cx, cy] = P(p.x, p.y), Rmax = p.r * S * 1.5;
+  const kk = Math.min(1, (ahora - p.tAviso) / Math.max(1, p.t0 - p.tAviso)), e = 1 - Math.pow(1 - Math.min(1, kk / 0.3), 3);
+  const fuera = ahora > p.t0 ? (ahora - p.t0) / 900 : 0, a = Math.max(0, 1 - fuera * 1.6), R = Rmax * (0.25 + 0.75 * e);
+  if (fuera === 0) pellizco(cx, cy - S * 0.2, S * (1.2 + kk), 0.6 * kk);   // el aire se chupa hacia el centro mientras carga
+  c.save(); c.translate(cx, cy); c.scale(1, 0.48); c.globalCompositeOperation = "lighter";
+  // relleno de calor
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, R);
+  g.addColorStop(0, `rgba(255,120,40,${0.22 * a * (0.5 + kk)})`); g.addColorStop(0.5, `rgba(255,50,20,${0.12 * a})`); g.addColorStop(0.9, `rgba(255,80,30,${0.35 * a})`); g.addColorStop(1, "rgba(255,40,20,0)");
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, R, 0, TAU); c.fill();
+  c.shadowColor = "#ff3b1f"; c.shadowBlur = 26;
+  // tres bandas segmentadas que giran en sentidos distintos
+  const giro = 1 + kk * 1.8;                                              // gira cada vez más rápido mientras carga
+  [[0.95, S * 0.34, 1, "255,70,40"], [0.72, S * 0.22, -1.6, "255,130,50"], [0.48, S * 0.16, 2.3, "255,190,90"]].forEach(([m, w, vel, col]) => {
+    for (let t = 3; t >= 0; t--) {                                        // estela: desenfoque de giro
+      c.save(); c.rotate(ahora / 140 * vel * giro - t * 0.06 * vel); c.lineWidth = w; c.setLineDash([S * 0.13, S * 0.09]);
+      c.strokeStyle = `rgba(${col},${(0.45 + 0.45 * kk) * a * (t ? 0.18 : 1)})`; c.beginPath(); c.arc(0, 0, R * m, 0, TAU); c.stroke(); c.restore();
+    }
+  });
+  // barrido tipo radar
+  c.save(); c.rotate(ahora / 90 * giro);
+  const bar = c.createLinearGradient(0, 0, R, 0); bar.addColorStop(0, `rgba(255,220,160,${0.0})`); bar.addColorStop(1, `rgba(255,120,40,${0.5 * a})`);
+  c.fillStyle = bar; c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, R, -0.35, 0); c.closePath(); c.fill(); c.restore();
+  // rayos eléctricos entre las bandas
+  c.setLineDash([]); c.lineWidth = 2; c.strokeStyle = `rgba(255,230,180,${0.8 * a})`;
+  for (let i = 0; i < 6; i++) { if (Math.random() < 0.4) continue; const an = Math.random() * TAU; let r1 = R * 0.48;
+    c.beginPath(); c.moveTo(Math.cos(an) * r1, Math.sin(an) * r1);
+    for (let k = 0; k < 4; k++) { r1 += R * 0.12; const a2 = an + (Math.random() - 0.5) * 0.25; c.lineTo(Math.cos(a2) * r1, Math.sin(a2) * r1); }
+    c.stroke(); }
+  // anillos finos con marcas tipo HUD
+  c.save(); c.rotate(-ahora / 110 * giro); c.lineWidth = 2.5; c.setLineDash([S * 1.1, S * 0.25, S * 0.2, S * 0.25]);
+  c.strokeStyle = `rgba(255,210,120,${a})`; c.beginPath(); c.arc(0, 0, R * 1.08, 0, TAU); c.stroke(); c.restore();
+  c.setLineDash([]); c.lineWidth = 2; c.strokeStyle = `rgba(255,120,40,${0.75 * a})`;
+  c.save(); c.rotate(ahora / 200 * giro);
+  for (let i = 0; i < 36; i++) { const an = i / 36 * TAU, l = i % 3 === 0 ? 0.14 : 0.07; c.beginPath(); c.moveTo(Math.cos(an) * R * 1.12, Math.sin(an) * R * 1.12); c.lineTo(Math.cos(an) * R * (1.12 + l), Math.sin(an) * R * (1.12 + l)); c.stroke(); }
+  for (let i = 0; i < 24; i++) { const an = i / 24 * TAU; c.beginPath(); c.moveTo(Math.cos(an) * R * 0.52, Math.sin(an) * R * 0.52); c.lineTo(Math.cos(an) * R * 0.68, Math.sin(an) * R * 0.68); c.stroke(); }
+  c.restore();
+  // chispas que se jalan al centro mientras carga
+  if (fuera === 0) for (let i = 0; i < 18; i++) { const f = ((ahora / 500) + i / 18) % 1, an = i * 2.4 + i, rr2 = R * 1.1 * (1 - f);
+    c.fillStyle = `rgba(255,200,120,${f * a})`; c.beginPath(); c.arc(Math.cos(an) * rr2, Math.sin(an) * rr2, 2 + 2 * f, 0, TAU); c.fill(); }
+  // núcleo que late
+  const nk = 0.6 + 0.4 * Math.sin(ahora / 70);
+  const g2 = c.createRadialGradient(0, 0, 0, 0, 0, S * (0.8 + kk));
+  g2.addColorStop(0, `rgba(255,240,210,${nk * a})`); g2.addColorStop(0.35, `rgba(255,70,30,${0.8 * a})`); g2.addColorStop(1, "rgba(255,0,0,0)");
+  c.fillStyle = g2; c.beginPath(); c.arc(0, 0, S * (0.8 + kk), 0, TAU); c.fill();
+  c.lineWidth = 4; c.strokeStyle = `rgba(255,${120 + Math.random() * 100},60,${(0.6 + 0.4 * Math.random()) * a})`;   // borde que chisporrotea
+  c.beginPath(); c.arc(0, 0, R * (1 + Math.sin(ahora / 40) * 0.01), 0, TAU); c.stroke();
+  // impacto: onda de choque blanca-naranja que sale de golpe + destello
+  if (fuera > 0) {
+    const ow = Rmax * (1 + fuera * 0.9);
+    c.lineWidth = S * 0.5 * (1 - fuera); c.strokeStyle = `rgba(255,235,200,${(1 - fuera) * 0.9})`; c.beginPath(); c.arc(0, 0, ow, 0, TAU); c.stroke();
+    c.lineWidth = S * 0.18 * (1 - fuera); c.strokeStyle = `rgba(255,90,30,${1 - fuera})`; c.beginPath(); c.arc(0, 0, ow * 0.9, 0, TAU); c.stroke();
+    if (fuera < 0.25) { c.fillStyle = `rgba(255,200,150,${0.8 * (1 - fuera / 0.25)})`; c.beginPath(); c.arc(0, 0, Rmax * 0.8, 0, TAU); c.fill(); }
+  }
+  c.restore();
+  if (fuera > 0 && fuera < 0.6) {                                         // pilares de energía que salen del anillo al golpe
+    const pa = 1 - fuera / 0.6; c.save(); c.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 10; i++) { const an = i / 10 * TAU + p.t0, x = cx + Math.cos(an) * Rmax * 0.95, y = cy + Math.sin(an) * Rmax * 0.95 * 0.48, h = S * (2.5 + (i % 3)) * pa;
+      const g = c.createLinearGradient(x, y, x, y - h); g.addColorStop(0, `rgba(255,140,60,${0.8 * pa})`); g.addColorStop(1, "rgba(255,60,30,0)");
+      c.fillStyle = g; c.fillRect(x - S * 0.12, y - h, S * 0.24, h); }
+    c.restore();
+  }
+}
+
+function pellizco(x, y, r, fuerza) {                                   // distorsión: lo de alrededor se "chupa" hacia el centro
+  const dpr = lienzo.width / innerWidth, r2 = r * (1 + 0.35 * fuerza);
+  try { c.save(); c.globalAlpha = 0.35 * fuerza; c.beginPath(); c.arc(x, y, r, 0, TAU); c.clip();
+    c.drawImage(lienzo, (x - r2) * dpr, (y - r2) * dpr, r2 * 2 * dpr, r2 * 2 * dpr, x - r, y - r, r * 2, r * 2); c.restore(); } catch (e) { c.restore(); }
+}
+
+function lanzar() {                                         // igual que en el juego: carga 900 ms y golpea
+  const ahora = performance.now(), rx = 13, ry = 7.3;
+  pulsosG.push({ x: rx, y: ry, r: 4.7, tAviso: ahora, t0: ahora + 900, grande: true });
+  setTimeout(() => {
+    sacudir(32); crateres.push({ x: rx, y: ry, t0: performance.now(), semilla: Math.random() * TAU, grande: true });
+    for (let i = 0; i < 40; i++) { const an = Math.random() * TAU, v = 4 + Math.random() * 7;
+      escombros.push({ x: rx, y: ry, vx: Math.cos(an) * v, vy: Math.sin(an) * v, h: 0, vh: 3 + Math.random() * 5, t0: performance.now(), tam: 2 + Math.random() * 4, fuego: Math.random() < 0.5 }); }
+  }, 900);
+}
+addEventListener("click", lanzar);
+setInterval(lanzar, 3000); lanzar();
+
+function cuadro(ahora) {
+  c.setTransform(Math.min(2, devicePixelRatio || 1), 0, 0, Math.min(2, devicePixelRatio || 1), 0, 0);
+  c.fillStyle = "#0a0607"; c.fillRect(0, 0, ancho, alto);
+  c.save();
+  if (sacudida > 0.4) { c.translate((Math.random() - 0.5) * sacudida, (Math.random() - 0.5) * sacudida); sacudida *= 0.9; }
+  for (let x = 0; x < 26; x++) for (let y = 0; y < 14; y++) { const [qx, qy] = P(x, y); c.fillStyle = (x + y) % 2 ? "#23181a" : "#2c2022"; c.fillRect(qx, qy, S + 0.5, S + 0.5); }
+  crateres = crateres.filter(k => ahora - k.t0 < 7000);
+  crateres.forEach(k => { const [cx, cy] = P(k.x, k.y), a = Math.min(1, (ahora - k.t0) / 120) * Math.min(1, (7000 - (ahora - k.t0)) / 1000);
+    c.save(); c.translate(cx, cy); c.scale(1, 0.5); if (k.grande) c.scale(1.9, 1.9);
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, S * 1.7);
+    g.addColorStop(0, `rgba(5,3,3,${0.95 * a})`); g.addColorStop(0.55, `rgba(20,10,8,${0.75 * a})`); g.addColorStop(0.8, `rgba(60,25,10,${0.35 * a})`); g.addColorStop(1, "rgba(60,25,10,0)");
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, S * 1.7, 0, TAU); c.fill();
+    c.strokeStyle = `rgba(0,0,0,${0.6 * a})`; c.lineWidth = 2;
+    for (let i = 0; i < 8; i++) { const an = i / 8 * TAU + k.semilla; c.beginPath(); c.moveTo(Math.cos(an) * S * 0.9, Math.sin(an) * S * 0.9);
+      c.lineTo(Math.cos(an + 0.2) * S * 1.5, Math.sin(an + 0.2) * S * 1.5); c.lineTo(Math.cos(an - 0.1) * S * 2.2, Math.sin(an - 0.1) * S * 2.2); c.stroke(); }
+    c.restore(); });
+  pulsosG = pulsosG.filter(p => ahora - p.t0 < (p.grande ? 900 : 350));
+  pulsosG.filter(p => p.grande).forEach(p => pulsoGrande(p, ahora));
+  escombros = escombros.filter(e => ahora - e.t0 < 1200);
+  escombros.forEach(e => { const t = (ahora - e.t0) / 1000, h = Math.max(0, e.vh * t - 9 * t * t), [ex, ey] = P(e.x + e.vx * t * 0.6, e.y + e.vy * t * 0.6);
+    c.globalAlpha = 1 - t / 1.2; c.fillStyle = e.fuego ? "#fb923c" : "#3f2a20"; c.fillRect(ex - e.tam / 2, ey - h * S * 0.4 - e.tam / 2, e.tam, e.tam); c.globalAlpha = 1; });
+  pulsosG = pulsosG.filter(p => ahora - p.t0 < 900);
+  pulsosG.forEach(p => pulsoGrande(p, ahora));
+  // JP (marcador) en el centro
+  const [jx, jy] = P(13, 7); c.fillStyle = "#64748b"; c.fillRect(jx - S * 0.5, jy - S * 2.2, S, S * 2.2);
+  c.restore();
+  requestAnimationFrame(cuadro);
+}
+requestAnimationFrame(cuadro);
+</script></body></html>
